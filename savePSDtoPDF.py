@@ -68,7 +68,7 @@ def generateRecordingIDsToRun():
 ### choose among: 'mostRecent' # 'singleDir' 'singleFile' 'allInChildDirs' 
 DATA_SELECTION_SCHEME = 'allInChildDirs' # 'singleDir' 'singleFile' 'allInChildDirs' 'fromTextFileInCwd' 
 EPHYS_PARENT_PATH = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Data/raw/noiseTests/' #use '' for current work directory
-SUMMARY_OUTPUT_PATH = os.getcwd() # or modify to custom dir 
+SUMMARY_OUTPUT_PATH = './NoiseTests/PSDs' # or modify to custom dir 
 PATH_a_Analysis = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis'
 PATH_rawParent = os.getcwd()
 PATH_a_Analysis = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis'
@@ -79,11 +79,13 @@ BASHRC_DIR = '/home/matthew'
 NUM_CH = 64
 SAMPLE_RATE_HZ = 30000
 FIRST_CH = 1 # 1 indexed
-LAST_CH = 64
+LAST_CH = 3
 INSPECT_INDIVIDUAL_CHAN = 0 # 0 for no; 1 for yes
-INSPECT_ONE_BY_ONE = 0
+OPEN_EACH_PDF = 0 # 1 to open each psd plot pdf before proceeding to the next plot
 SAVE_ALL_TO_PDF = 1
- 
+## for the zoomed in plot (there's a plot of all of the frequencies as well)
+HIGH_FREQ_CUTOFF = 20 # potentially NOT in Hz!
+
 ###data selection 
 print('\nDATA_SELECTION_SCHEME: ' + DATA_SELECTION_SCHEME)
 if DATA_SELECTION_SCHEME == 'mostRecent':
@@ -111,6 +113,8 @@ else:
 if platform.system() == 'Linux':
 	CHROME_PATH = '/usr/bin/google-chrome' # ubuntu tower path
 	print('Linux system detected\nChrome path set to: ' + CHROME_PATH)
+	if not os.path.exists(SUMMARY_OUTPUT_PATH):
+		os.makedirs(SUMMARY_OUTPUT_PATH)
 elif platform.system() == 'Windows':
 	CHROME_PATH = 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe %s' # windows stim/ephys computer path	
 	DIR_OF_RECORDINGS = 'C:\\Users\\yatang\\Documents\\Ephys\\Open Ephys' # windows ephys/stim path
@@ -122,46 +126,54 @@ else:
 	print('WARNING: code has been optimized for Windows and Mac operating systems only.\nSet your own system parameters at the top of .py file yourself >:p')
 
 
-if INSPECT_INDIVIDUAL_CHAN ==1: # 
-	print('inspecting PSD of chan: ' + str(CHAN_NUM))
-	plt.subplot(211)
-	plt.plot(data[:,CHAN_NUM])
-	plt.subplot(212)
-	plt.psd(data[:,CHAN_NUM], 512, SAMPLE_RATE_HZ)
-	plt.show()
-elif INSPECT_INDIVIDUAL_CHAN ==0:
-	print('skipping individual channel inspection\n set INSPECT_INDIVIDUAL_CHAN to 1 for inspection and choose CHAN_NUM')
-	if SAVE_ALL_TO_PDF == 1:
-		for rawDataPath in recPathlist:
-			rawDataPath = rawDataPath.replace('/Continuous_Data.openephys','')
-			recordingName = str(os.path.basename(os.path.normpath(rawDataPath)))
-			recordingName = recordingName.replace('/','')
-			data = loadRawOEdir(rawDataPath)
-			ts = time.time()
-			timeStr = datetime.datetime.fromtimestamp(ts).strftime('%Y_%m_%d__%H_%M_%S')
-			pdfName = recordingName + timeStr + '.pdf'
-			numChannelsPlotted = LAST_CH - FIRST_CH + 1
-			with PdfPages(pdfName) as pdf_out:
-				for chInd in range(FIRST_CH-1, LAST_CH):
-					# f = plt.figure(figsize=(200,200)) # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
-					f = plt.figure() # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
-					plt.subplot(211)
-					plt.plot(data[:,chInd])
-					plt.subplot(212)
-					plt.psd(data[:,chInd], 512, SAMPLE_RATE_HZ)
-					if INSPECT_ONE_BY_ONE ==1:
-						print('close the plot window to advance to the next channel\nOR set INSPECT_ONE_BY_ONE to 0')
-						plt.show()
-					print('saving PSD for channel: ' + str(chInd+1) + ' of ' + str(numChannelsPlotted))
-					if chInd == LAST_CH:
-						f.suptitle(RAW_DATA_PATH, fontsize= titleFontSize)
+print('skipping individual channel inspection\n set INSPECT_INDIVIDUAL_CHAN to 1 for inspection and choose CHAN_NUM')
+if SAVE_ALL_TO_PDF == 1:
+	for rawDataPath in recPathlist:
+		rawDataPath = rawDataPath.replace('/Continuous_Data.openephys','')
+		recordingName = str(os.path.basename(os.path.normpath(rawDataPath)))
+		recordingName = recordingName.replace('/','')
+		data = loadRawOEdir(rawDataPath)
+		ts = time.time()
+		timeStr = datetime.datetime.fromtimestamp(ts).strftime('%Y_%m_%d__%H_%M_%S')
+		pdfName = Path(SUMMARY_OUTPUT_PATH).joinpath(recordingName + timeStr + '.pdf')
+		numChannelsPlotted = LAST_CH - FIRST_CH + 1
+		with PdfPages(pdfName) as pdf_out:
+			for chInd in range(FIRST_CH-1, LAST_CH):
+				# f = plt.figure(figsize=(200,200)) # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
+				f = plt.figure() 
+				plt.subplot(411)
+				plt.plot(data[:,chInd])
+				plt.subplot(412)
+				Pxx, freqs = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+				
+				# freqs, Pxx  = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+				plt.subplot(413)
+				# extraTicks = [-50, -25, -10, -5, -2, -1, 0,1]
+				# plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF], yticks = list(plt.yticks()[0]) + extraTicks)
+				plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF])
+
+				### testing
+				plt.subplot(414)
+				plt.magnitude_spectrum(data[:,chInd], Fs = SAMPLE_RATE_HZ, scale = 'dB')
+
+				if INSPECT_INDIVIDUAL_CHAN ==1:
+					print('close the plot window to advance to the next channel\nOR set INSPECT_ONE_BY_ONE to 0')
+					plt.show()
+				
+				if chInd == LAST_CH:
+					f.suptitle(RAW_DATA_PATH, fontsize= titleFontSize)
+				print('saving PSD for channel: ' + str(chInd+1) + ' of ' + str(numChannelsPlotted))
+				if SAVE_ALL_TO_PDF == 1:
 					pdf_out.savefig(f)
-					plt.close(f)
-					f.clf() # might help with out of memory error
-			print('finished: ' + pdfName + ' saved to cwd')
-			webbrowser.get(CHROME_PATH).open(pdfName)	
-else:
-	genericInvalidParamError('INSPECT_INDIVIDUAL_CHAN')
+				plt.close(f)
+				f.clf() # might help with out of memory error
+				
+		print('finished: ' + str(pdfName) + ' saved to cwd')
+		if OPEN_EACH_PDF == 1:
+			webbrowser.get(CHROME_PATH).open(pdfName)
+		else:
+			print('PSD results saved to cwd')	
+
 
 
 
