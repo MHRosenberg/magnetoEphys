@@ -110,8 +110,11 @@ SAVE_ALL_TO_PDF = 1
 ## TTL plotting paramete
 FIRST_TTL_IND = 0 # skip the first one because this is presumably truncated wrt to the normal period
 LAST_TTL_IND = -1 # use -1 to go until the end
-NUM_PLATEU_PTS = 4 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
-PHASE_OFFSET = 2 # phase offset (in radians?) to align the sine wave to the squarewave from TTLs
+NUM_PLATEU_PTS = 50 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
+SINE_FREQ_CALC_WINDOW_SIZE = 100 # number of points to average over when calculating the freq of the sine wave from TTL inputs
+MEAN_SINE_VAL = 0.5
+SINE_AMPLITUDE = 0.6
+PHASE_OFFSET = 1 # phase offset (in radians?) to align the sine wave to the squarewave from TTLs
 
 ###data selection 
 print('\nDATA_SELECTION_SCHEME: ' + DATA_SELECTION_SCHEME)
@@ -181,25 +184,49 @@ for rawDataPath in recPathlist:
 		TTL_values = TTL_values[FIRST_TTL_IND:LAST_TTL_IND] # truncate data
 		TTL_timeStamps = np.divide(TTL_timeStamps[FIRST_TTL_IND:LAST_TTL_IND],SAMPLE_RATE_HZ)  # yeilds all time stamps in secs
 		numTimeStamps_TTL = TTL_values.shape[0]
-		
-
-		
-
 		print('num time stamps: ' + str(numTimeStamps_TTL))
 		print('TTL_values shape' + str(TTL_values.shape))
 		print('current value: ' +  str(currentValue))
 
+		### initialize numpy arrays
 		TTL_squ_ts = np.full((numTimeStamps_TTL * NUM_PLATEU_PTS), np.nan) 	
 		TTL_squ_vals = np.full((numTimeStamps_TTL * NUM_PLATEU_PTS), np.nan)
 		sine_ts = np.full(TTL_squ_ts.shape, np.nan)
 		sine_vals = np.full(TTL_squ_ts.shape, np.nan) 
+		frequencies = np.full(numTimeStamps_TTL, np.nan)
 
-		
 		numTimeStamps_squ = sine_ts.shape[0] # TEST FIX
 
 		# print(np.isnan(sine_ts).any())
 		# print(np.isnan(sine_vals).any())
 
+		### calculate sine wave frequency with a rolling window
+		for ttlInd in range(0,numTimeStamps_TTL - SINE_FREQ_CALC_WINDOW_SIZE):
+
+			# get samples and time stamps for this window
+			TTLvalsInWin = TTL_values[ttlInd:ttlInd+SINE_FREQ_CALC_WINDOW_SIZE]
+			TTLtimeStampsInWin = TTL_timeStamps[ttlInd:ttlInd+SINE_FREQ_CALC_WINDOW_SIZE]
+
+			# enforce same number of high and low TTLs per window by dropping the first value if the number of points is unequal
+			if np.remainder(TTLvalsInWin.shape[0],2) != 1:
+				print('dropping first TTL val from this window calculation to enforce odd number of TTLs')
+				TTLvalsInWin = TTLvalsInWin[1::]
+			if np.remainder(TTLtimeStampsInWin.shape[0],2) != 1:
+				print('dropping first TTL time stamp from this window calculation to enforce odd number of TTLs')
+				TTLtimeStampsInWin = TTLtimeStampsInWin[1::]
+
+			duration = TTLtimeStampsInWin[-1] - TTLtimeStampsInWin[0] ## TO DO FIX INDEX ERROR HERE
+
+			numPeriods = TTLvalsInWin.shape[0] // 2
+
+			frequencies[ttlInd] = numPeriods / duration
+
+		# set last window of nans to the last computed freq value
+		nanInds = np.argwhere(np.isnan(frequencies))
+		print(frequencies[nanInds])
+		frequencies[nanInds] = frequencies[ttlInd]
+
+		### generate square wave from TTL highs and lows
 		for ttlInd in range(0,numTimeStamps_TTL): # TEST FIX
 			currentTimeStamp = TTL_timeStamps[ttlInd]
 			
@@ -219,24 +246,12 @@ for rawDataPath in recPathlist:
 				currentValue = 0
 
 			### calculate sine wave from ttl
-			# TTL_values_slice = TTL_values[int(firstHighTTLind):int(lastHighTTLind)]
-			# TTL_values_slice = TTL_values[ttlInd:ttlInd + NUM_PLATEU_PTS]
-			TTL_values_slice = TTL_squ_vals[firstNewInd:lastNewInd]
-
-			# if ttlInd + NUM_PLATEU_PTS < numTimeStamps:
-			if lastNewInd <= numTimeStamps_squ:
-				# freq = (np.argwhere(TTL_values_slice.shape == 1).shape[0] -1) / (TTL_timeStamps[lastHighTTLind-2] - TTL_timeStamps[firstHighTTLind]) ### TEST FIX
-				# freq = (np.argwhere(TTL_values_slice.shape == 1).shape[0] -1) / (TTL_timeStamps[ttlInd] - TTL_timeStamps[ttlInd+NUM_PLATEU_PTS])
-				freq = (np.argwhere(TTL_values_slice.shape == 1).shape[0] -1) / (TTL_squ_ts[lastNewInd-1] - TTL_squ_ts[firstNewInd])
-				# sine_vals = 0.5 + 0.5 * np.sin(2 * np.pi * freq * TTL_squ_ts +  PHASE_OFFSET / np.pi)
-				# sine_ts = np.linspace(np.min(TTL_timeStamps), np.max(TTL_timeStamps), TTL_timeStamps.size * 10) # from just TTLs 
-
-				sine_ts[firstNewInd:lastNewInd] = np.linspace(TTL_squ_ts[firstNewInd],TTL_squ_ts[lastNewInd-1], NUM_PLATEU_PTS) # from reconstructed square wave
-				sine_vals[firstNewInd:lastNewInd] = 0.5 + 0.5 * np.sin((2 * np.pi * freq * sine_ts[firstNewInd:lastNewInd]) +  PHASE_OFFSET / np.pi)
-
+			TTL_vals_in_window = TTL_values[ttlInd] 
 			
-
-		pdb.set_trace()
+			if lastNewInd <= numTimeStamps_squ:
+				sine_ts[firstNewInd:lastNewInd] = np.linspace(TTL_squ_ts[firstNewInd],TTL_squ_ts[lastNewInd-1], NUM_PLATEU_PTS) # from reconstructed square wave # PRIOR
+				sine_vals[firstNewInd:lastNewInd] = MEAN_SINE_VAL + SINE_AMPLITUDE * np.sin((2 * np.pi * frequencies[ttlInd] * sine_ts[firstNewInd:lastNewInd]) +  PHASE_OFFSET / np.pi)
+				
 			# print('calculated freq from TTL peaks to be: ' + str(freq)) # WIP replace with mean and variance measures
 
 		plt.figure()
