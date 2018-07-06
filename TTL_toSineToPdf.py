@@ -17,6 +17,7 @@ import webbrowser
 from pathlib import Path, PureWindowsPath # only works on 3.4+ (not 2.7)
 import platform
 import pdb
+from scipy.signal import welch, hanning
 
 
 ### CHECK USER PARAMETERS THAT FOLLLOW THESE FUNCTIONS!
@@ -50,6 +51,11 @@ def loadTTLdata(rawDataDir): # from the .events file
 	TTL_timeStamps = eventsDict['timestamps']
 	print('shape of timestamps: ' + str(TTL_timeStamps.shape))
 	print('time stamps: ' + str(TTL_timeStamps))
+
+	### DEBUG
+	pdb.set_trace()
+
+
 	return TTL_timeStamps, TTL_values
 
 def saveRawDataPathsToTxt(pathList):
@@ -107,9 +113,9 @@ NUM_CH = 64
 SAMPLE_RATE_HZ = 30000
 FIRST_CH = 1 # 1 indexed
 LAST_CH = 3
-INSPECT_EACH_PLOT = 1 # 0 for no; 1 for yes
-OPEN_EACH_PDF = 1 # 1 to open each psd plot pdf before proceeding to the next plot
-SAVE_ALL_TO_PDF = 1
+INSPECT_EACH_PLOT = 0 # 0 for no; 1 for yes
+OPEN_EACH_PDF = 0 # 1 to open each psd plot pdf before proceeding to the next plot
+SAVE_TO_PDF = 0
 
 
 ## TTL plotting paramete
@@ -118,7 +124,7 @@ LAST_TTL_IND = -1 # use -1 to go until the end
 NUM_PLATEU_PTS = 20 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
 MEAN_SINE_VAL = 0.5
 SINE_AMPLITUDE = 0.6
-NUM_SINE_VALS_PER_TTL = 256
+NUM_SINE_VALS_PER_TTL = 512
 
 ###data selection 
 print('\nDATA_SELECTION_SCHEME: ' + DATA_SELECTION_SCHEME)
@@ -236,74 +242,99 @@ for rawDataPath in recPathlist:
 				currentValue = 0			
 
 		### plot values
-		plt.figure()
+		f = plt.figure()
 		plt.plot(TTL_squ_times, TTL_squ_vals, 'o', color = 'b')
 		plt.plot(TTL_times, TTL_values, 'o', color = 'r')
 		plt.plot(sine_times, sine_vals, 'o', color = 'g')
 
-
-		sine_times = sine_times[~np.isnan(sine_times)] # remove trailing nans 
-		# for i in sine_times[-50:]:
-
-		FIRST_VLINE_IND = 243650
-		LAST_VLINE_IND = 243700
-		for i in range(FIRST_VLINE_IND,LAST_VLINE_IND):
-			ind = int(i)
-			print(ind)
+		### remove trailing nans 
+		sine_times = sine_times[~np.isnan(sine_times)] 
+		sine_vals = sine_vals[~np.isnan(sine_vals)]
+		
+		### vertical line for debuggin
+		# FIRST_VLINE_IND = 243650
+		# LAST_VLINE_IND = 243700
+		# for i in range(FIRST_VLINE_IND,LAST_VLINE_IND):
+		# 	ind = int(i)
+		# 	print(ind)
 			
-			val = sine_times[ind]
-			print(val)
-			plt.axvline(x = val)
-		plt.legend(['TTL square', 'TTL transitions', 'reconstructed sine stim'], loc='best')
-		plt.show()
+		# 	val = sine_times[ind]
+		# 	print(val)
+		# 	plt.axvline(x = val)
 
+		plt.legend(['TTL square', 'TTL transitions', 'reconstructed sine stim'], loc='best')
+		if INSPECT_EACH_PLOT ==1:
+			print('close the plot window to advance to the next channel\nOR set INSPECT_EACH_PLOT to 0')
+			plt.show()
+
+
+		### format pdf file name
 		ts = time.time()
 		timeStr = datetime.datetime.fromtimestamp(ts).strftime('%Y_%m_%d__%H_%M')
 		recordingName = getRecordingNameFromPath(rawDataPath)
 		print('naming the file:' + recordingName + timeStr + '.pdf')
-
 		pdfName = Path(SUMMARY_OUTPUT_PATH).joinpath(recordingName + timeStr + '.pdf')
+		with PdfPages(pdfName) as pdf_out:
+
+			### save prior figure		
+			if SAVE_TO_PDF == 1:
+				pdf_out.savefig(f)			
+			plt.close(f)
+			f.clf() # might help with out of memory error
+		
+
+
+			### PSD sanity check
+			# nblock = 1024
+			nblock = 46080 # 1024*30*1.5
+			overlap = 128
+			# win = hanning(nblock, True)
+			# f, Pxx_den = welch(sine_vals, SAMPLE_RATE_HZ, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
+
+			try:
+				win = hanning(nblock, False)
+				welchFreqs, Pxx_den = welch(sine_vals, SAMPLE_RATE_HZ, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
+			except Exception as e:
+				print('\n\nERROR:')
+				print(e)
+				print('this might be ok if, for instance, the TTL train was turned off after starting the recording')
+				print('\n\n')
+				pdb.set_trace()
+
+
+
+			f = plt.figure()
+			plt.xlabel('frequency [Hz]')
+			plt.ylabel('PSD [V**2/Hz?]')
+
+			# plt.plot(bins[:-1], hist)#, width = binSizeInSamples)
+			# plt.xlim(min(binEdges), max(binEdges))
+
+			plt.semilogy(welchFreqs,Pxx_den, '-o')
+			if INSPECT_EACH_PLOT ==1:
+				print('close the plot window to advance to the next channel\nOR set INSPECT_EACH_PLOT to 0')
+				plt.show()
+
+			### DEBUG
+			# pdb.set_trace()
+
+			if SAVE_TO_PDF == 1:
+				print('saving psd for TTLs to pdf')
+				pdf_out.savefig(f)					
+			plt.close(f)
+			f.clf() # might help with out of memory error			
+			print('finished: ' + str(pdfName) + ' saved to cwd')
+
+		if OPEN_EACH_PDF == 1:
+			webbrowser.get(str(CHROME_PATH)).open(str(pdfName))
+		else:
+			print('PSD results saved to cwd')
 
 	else:
 		print('no TTLs found in : ' + rawDataPath)
 		print('skipping this file')
 
-		# with PdfPages(pdfName) as pdf_out:
-		# 	for chInd in range(FIRST_CH-1, LAST_CH):
-		# 		# f = plt.figure(figsize=(200,200)) # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
-		# 		f = plt.figure() 
-		# 		plt.subplot(411)
-		# 		plt.plot(data[:,chInd])
-		# 		plt.subplot(412)
-		# 		Pxx, freqs = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
-				
-		# 		# freqs, Pxx  = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
-		# 		plt.subplot(413)
-		# 		# extraTicks = [-50, -25, -10, -5, -2, -1, 0,1]
-		# 		# plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF], yticks = list(plt.yticks()[0]) + extraTicks)
-		# 		plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF])
-
-		# 		### testing
-		# 		plt.subplot(414)
-		# 		plt.magnitude_spectrum(data[:,chInd], Fs = SAMPLE_RATE_HZ, scale = 'dB')
-
-		# 		if INSPECT_EACH_PLOT ==1:
-		# 			print('close the plot window to advance to the next channel\nOR set INSPECT_EACH_PLOT to 0')
-		# 			plt.show()
-				
-		# 		if chInd == LAST_CH:
-		# 			f.suptitle(RAW_DATA_PATH, fontsize= titleFontSize)
-		# 		print('saving PSD for channel: ' + str(chInd+1) + ' of ' + str(numChannelsPlotted))
-		# 		if SAVE_ALL_TO_PDF == 1:
-		# 			pdf_out.savefig(f)
-		# 		plt.close(f)
-		# 		f.clf() # might help with out of memory error
-				
-		# print('finished: ' + str(pdfName) + ' saved to cwd')
-		# if OPEN_EACH_PDF == 1:
-		# 	webbrowser.get(CHROME_PATH).open(pdfName)
-		# else:
-		# 	print('PSD results saved to cwd')	
+			
 	
 
 

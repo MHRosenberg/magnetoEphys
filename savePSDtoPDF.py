@@ -81,10 +81,12 @@ SAMPLE_RATE_HZ = 30000
 FIRST_CH = 1 # 1 indexed
 LAST_CH = 3
 INSPECT_INDIVIDUAL_CHAN = 0 # 0 for no; 1 for yes
-OPEN_EACH_PDF = 0 # 1 to open each psd plot pdf before proceeding to the next plot
+OPEN_EACH_PDF = 1 # 1 to open each psd plot pdf before proceeding to the next plot
 SAVE_ALL_TO_PDF = 1
 ## for the zoomed in plot (there's a plot of all of the frequencies as well)
 HIGH_FREQ_CUTOFF = 20 # potentially NOT in Hz!
+
+NFFT = 1024
 
 ###data selection 
 print('\nDATA_SELECTION_SCHEME: ' + DATA_SELECTION_SCHEME)
@@ -127,52 +129,61 @@ else:
 
 
 print('skipping individual channel inspection\n set INSPECT_INDIVIDUAL_CHAN to 1 for inspection and choose CHAN_NUM')
-if SAVE_ALL_TO_PDF == 1:
-	for rawDataPath in recPathlist:
-		rawDataPath = rawDataPath.replace('/Continuous_Data.openephys','')
-		recordingName = str(os.path.basename(os.path.normpath(rawDataPath)))
-		recordingName = recordingName.replace('/','')
-		data = loadRawOEdir(rawDataPath)
-		ts = time.time()
-		timeStr = datetime.datetime.fromtimestamp(ts).strftime('%Y_%m_%d__%H_%M_%S')
-		pdfName = Path(SUMMARY_OUTPUT_PATH).joinpath(recordingName + timeStr + '.pdf')
-		numChannelsPlotted = LAST_CH - FIRST_CH + 1
-		with PdfPages(pdfName) as pdf_out:
-			for chInd in range(FIRST_CH-1, LAST_CH):
-				# f = plt.figure(figsize=(200,200)) # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
-				f = plt.figure() 
-				plt.subplot(411)
-				plt.plot(data[:,chInd])
-				plt.subplot(412)
-				Pxx, freqs = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
-				
-				# freqs, Pxx  = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
-				plt.subplot(413)
-				# extraTicks = [-50, -25, -10, -5, -2, -1, 0,1]
-				# plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF], yticks = list(plt.yticks()[0]) + extraTicks)
-				plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF])
+for rawDataPath in recPathlist:
+	rawDataPath = rawDataPath.replace('/Continuous_Data.openephys','')
+	recordingName = str(os.path.basename(os.path.normpath(rawDataPath)))
+	recordingName = recordingName.replace('/','')
+	data = loadRawOEdir(rawDataPath)
+	ts = time.time()
+	timeStr = datetime.datetime.fromtimestamp(ts).strftime('%Y_%m_%d__%H_%M_%S')
+	pdfName = Path(SUMMARY_OUTPUT_PATH).joinpath(recordingName + timeStr + '.pdf')
+	numChannelsPlotted = LAST_CH - FIRST_CH + 1
+	with PdfPages(pdfName) as pdf_out:
+		for chInd in range(FIRST_CH-1, LAST_CH):
+			# f = plt.figure(figsize=(200,200)) # REDUCE THESE NUMBERS IF YOU GET SEGMENTATION/MEMORY ERRORS!
+			f = plt.figure() # first page 
+			ax1 = plt.subplot(311)
+			plt.plot(data[:,chInd])
+			plt.subplot(312)
+			Pxx, freqs = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+			
+			# freqs, Pxx  = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+			plt.subplot(313)
+			# extraTicks = [-50, -25, -10, -5, -2, -1, 0,1]
+			# plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF], yticks = list(plt.yticks()[0]) + extraTicks)
+			plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF])
 
-				### testing
-				plt.subplot(414)
-				plt.magnitude_spectrum(data[:,chInd], Fs = SAMPLE_RATE_HZ, scale = 'dB')
+			if SAVE_ALL_TO_PDF == 1:
+				pdf_out.savefig(f)
 
-				if INSPECT_INDIVIDUAL_CHAN ==1:
-					print('close the plot window to advance to the next channel\nOR set INSPECT_ONE_BY_ONE to 0')
-					plt.show()
-				
-				if chInd == LAST_CH:
-					f.suptitle(RAW_DATA_PATH, fontsize= titleFontSize)
-				print('saving PSD for channel: ' + str(chInd+1) + ' of ' + str(numChannelsPlotted))
-				if SAVE_ALL_TO_PDF == 1:
-					pdf_out.savefig(f)
-				plt.close(f)
-				f.clf() # might help with out of memory error
-				
-		print('finished: ' + str(pdfName) + ' saved to cwd')
-		if OPEN_EACH_PDF == 1:
-			webbrowser.get(CHROME_PATH).open(pdfName)
-		else:
-			print('PSD results saved to cwd')	
+			f = plt.figure() # second page
+			
+			### testing
+			plt.subplot(311)
+			plt.magnitude_spectrum(data[:,chInd], Fs = SAMPLE_RATE_HZ, scale = 'dB')
+
+			plt.subplot(312)
+			
+			Pxx, freqs, bins, im = plt.specgram(data[:,chInd], NFFT=NFFT, Fs=SAMPLE_RATE_HZ, noverlap=900)
+
+
+			if INSPECT_INDIVIDUAL_CHAN ==1:
+				print('close the plot window to advance to the next channel\nOR set INSPECT_ONE_BY_ONE to 0')
+				plt.show()
+			
+			if chInd == LAST_CH:
+				f.suptitle(RAW_DATA_PATH, fontsize= titleFontSize)
+			print('saving PSD for channel: ' + str(chInd+1) + ' of ' + str(numChannelsPlotted))
+			if SAVE_ALL_TO_PDF == 1:
+				pdf_out.savefig(f)
+			plt.close(f)
+			f.clf() # might help with out of memory error
+			
+	print('finished: ' + str(pdfName) + ' saved to cwd')
+	if OPEN_EACH_PDF == 1:
+		webbrowser.get(str(CHROME_PATH)).open(str(pdfName))
+	else:
+		print('PSD results saved to cwd')	
 
 
 
