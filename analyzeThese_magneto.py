@@ -12,7 +12,7 @@ import sys
 
 ### CHECK THESE PARAMETERS!!!!!!
 SPIKESORTER = 'kiloSort' # use 'kiloSort', mountainSort', 'none', or 'both'
-SORT_ALL_IN_SUBDIRS = 'yes' # 'yes' or 'no' # no requires a pre-populated recordingIDsToRun.txt file and a rawDataPaths to match it in the cwd of this script 
+SORT_ALL_IN_SUBDIRS = 'no' # 'yes' or 'no' # no requires a pre-populated recordingIDsToRun.txt file and a rawDataPaths to match it in the cwd of this script 
 PATH_a_Analysis = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/'
 PATH_rawParent = os.getcwd()
 
@@ -20,7 +20,6 @@ PATH_rawParent = os.getcwd()
 KILOSORT_PARAMS_DIR = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/kiloSorting/' #make this file using createChannelMapFile.m
 KILOSORT_RESULTS_DIR = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Data/spikesorting/kiloSorted'
 POSTHOC_MERGE = 'no' # 'yes' or 'no' yes merges together clusters kilosort suspects as being the same etc
-OPEN_PHY_FOR_MANUAL_VERIFICATION = 'yes'
 ###
 
 def removeCondaPathFromBashrc(BASHRC_DIR):
@@ -178,88 +177,81 @@ def runKiloSort():
 	print('starting matlab engine for kilosorting')
 	eng = matlab.engine.start_matlab()
 	print('engine running')
-	try:
-		with open('recordingIDsToRun.txt') as recIDs, open('rawDataPaths.txt') as rawPaths:
-			recIDs = recIDs.read().splitlines()
-			rawPaths = rawPaths.read().splitlines()
-			print('\nPreparing to sort: ')
-			print('\n'.join(recIDs))
-			print('\namong the following (possible) raw data in subdirs of the cwd: ')
-			print('\n'.join(rawPaths))
-	except:
-		sys.exit("recordingIDsToRun.txt and rawDataPaths.txt missing from cwd: run code again with SORT_ALL_IN_SUBDIRS set to yes\n(set SPIKESORTER to none if you wish to modify the text files before sorting all child recordings in cwd)")
+	with open('recordingIDsToRun.txt') as recIDs, open('rawDataPaths.txt') as rawPaths:
+		recIDs = recIDs.read().splitlines()
+		rawPaths = rawPaths.read().splitlines()
+		print('\nPreparing to sort: ')
+		print('\n'.join(recIDs))
+		print('\namong the following (possible) raw data in subdirs of the cwd: ')
+		print('\n'.join(rawPaths))
 		
-	for recID in recIDs:
-		for rawPath in rawPaths:
-			if recID in rawPath: # nice implicit string search here
+		for recID in recIDs:
+			for rawPath in rawPaths:
+				if recID in rawPath: # nice implicit string search here
 
-				### format output results directory
-				try:
-					os.chdir(KILOSORT_RESULTS_DIR)
-				except:
-					print('\n dir not found, therefore creating dir: ' + KILOSORT_RESULTS_DIR)
-					os.system('mkdir ' + KILOSORT_RESULTS_DIR) # UNTESTED: can this make a nested directory?					
-				newKiloSaveDir = KILOSORT_RESULTS_DIR + '/' + recID
-				
-				
-				if POSTHOC_MERGE.lower() == 'yes':
-					newKiloSaveDir = newKiloSaveDir + 'posthocMerged'
-				elif POSTHOC_MERGE.lower() != ('yes' and 'no'):
-					sys.exit("\n\nPOSTHOC_MERGE param invalid! must be yes or no\n\n")
-
-				if not os.path.exists(newKiloSaveDir):
-					os.chdir(rawPath)
-
-					### rename first OE file if it has the weird capitalization
-					if not os.path.exists('./100_CH1.continuous'):
-						os.system('cp 100_ch1.continuous ./100_CH1.continuous') # alternatively: os.system("rename 's/ch/CH/' *.continuous")
-						print('copied continuous OE file from ch1 to CH1')
-					else:
-						print('data already named correctly; no need to rename OE file from ch1 to CH1')
+					### format output results directory
+					try:
+						os.chdir(KILOSORT_RESULTS_DIR)
+					except:
+						print('\n dir not found, therefore creating dir: ' + KILOSORT_RESULTS_DIR)
+						os.system('mkdir ' + KILOSORT_RESULTS_DIR) # UNTESTED: can this make a nested directory?					
+					newKiloSaveDir = KILOSORT_RESULTS_DIR + '/' + recID
 					
-					# read probe type from probeType.txt
-					with open('probeType.txt') as f:
-						probeType = f.readline()
-						probeType = probeType.strip()
-					print('using chanmap for probe: ' + probeType)
+					
+					if POSTHOC_MERGE.lower() == 'yes':
+						newKiloSaveDir = newKiloSaveDir + 'posthocMerged'
+					elif POSTHOC_MERGE.lower() != ('yes' and 'no'):
+						sys.exit("\n\nPOSTHOC_MERGE param invalid! must be yes or no\n\n")
 
-					### run the sorting
-					print('now kilosorting: ' + rawPath + '\n\nJust be patient now... :)')
-					os.chdir(KILOSORT_PARAMS_DIR)
-					eng.addpath(os.getcwd())
-					eng.workspace['RAW_DATA_ROOT_PATH'] = rawPath.strip()
+					if not os.path.exists(newKiloSaveDir):
+						os.chdir(rawPath)
 
-					if probeType.lower() == '64f':
-						if POSTHOC_MERGE.lower() == 'yes':
-							eng.master_file_2_9_18posthocMerged_64F(nargout = 0)
-						elif POSTHOC_MERGE.lower() == 'no':
-							eng.master_file_6_12_18_64F(nargout = 0)
-					elif probeType.lower() == '64g':
-						if POSTHOC_MERGE.lower() == 'yes':
-							eng.master_file_2_9_18posthocMerged_64G(nargout = 0)
-						elif POSTHOC_MERGE.lower() == 'no':
-							eng.master_file_6_12_18_64G(nargout = 0)								
+						### rename first OE file if it has the weird capitalization
+						if not os.path.exists('./100_CH1.continuous'):
+							os.system('cp 100_ch1.continuous ./100_CH1.continuous') # alternatively: os.system("rename 's/ch/CH/' *.continuous")
+							print('copied continuous OE file from ch1 to CH1')
+						else:
+							print('data already named correctly; no need to rename OE file from ch1 to CH1')
+						
+						# read probe type from probeType.txt
+						with open('probeType.txt') as f:
+							probeType = f.readline()
+							probeType = probeType.strip()
+						print('using chanmap for probe: ' + probeType)
+
+						### run the sorting
+						print('now kilosorting: ' + rawPath + '\n\nJust be patient now... :)')
+						os.chdir(KILOSORT_PARAMS_DIR)
+						eng.addpath(os.getcwd())
+						eng.workspace['RAW_DATA_ROOT_PATH'] = rawPath.strip()
+
+						if probeType.lower() == '64f':
+							if POSTHOC_MERGE.lower() == 'yes':
+								eng.master_file_2_9_18posthocMerged_64F(nargout = 0)
+							elif POSTHOC_MERGE.lower() == 'no':
+								eng.master_file_6_12_18_64F(nargout = 0)
+						elif probeType.lower() == '64g':
+							if POSTHOC_MERGE.lower() == 'yes':
+								eng.master_file_2_9_18posthocMerged_64G(nargout = 0)
+							elif POSTHOC_MERGE.lower() == 'no':
+								eng.master_file_6_12_18_64G(nargout = 0)								
+						else:
+							sys.exit('ERROR: chanmap unavailable for that probe type or probeType.txt missing from raw data dir')
+
+						os.chdir(rawPath)
+						moveKiloResultsOutOfRawDir()
+
 					else:
-						sys.exit('ERROR: chanmap unavailable for that probe type or probeType.txt missing from raw data dir')
-
-					os.chdir(rawPath)
-					moveKiloResultsOutOfRawDir()
-
-				else:
-					print('\nsorting results already exist for: ' + newKiloSaveDir)
-					print('rename, move, or delete this dir to rerun the analysis of this dataset')
-				print('\nfinished with kiloSorting: ' + recID)
-
-def openPhyForManualSorting():
-
-	
+						print('\nsorting results already exist for: ' + newKiloSaveDir)
+						print('rename, move, or delete this dir to rerun the analysis of this dataset')
+	print('\nfinished with kiloSorting: ' + recID)
 
 ### MAIN CODE: 
 
 ### CHOOSING DATA: output = recordingIDsToRun.txt
 ## get all data paths for subdirs in ./
 # pathList = []    
-if SORT_ALL_IN_SUBDIRS.lower() == 'yes':
+if SORT_ALL_IN_SUBDIRS == 'yes':
 	print('sorting all in subdirs from the location of this script')
 	exten = '.openephys' # make this a UNIQUE FILE within the raw open ephys dir
 
@@ -270,7 +262,7 @@ if SORT_ALL_IN_SUBDIRS.lower() == 'yes':
 	recIDlist = generateRecordingIDsToRun() 
 	print('\n'.join(recIDlist))
 	print('\nremove some of the above from recordingIDsToRun.txt to run on a subset of the child dir data\n')
-elif SORT_ALL_IN_SUBDIRS.lower() == 'no':
+elif SORT_ALL_IN_SUBDIRS == 'no':
 	if os.path.exists('recordingIDsToRun.txt'):
 		print('sorting based on contents of recordingIDsToRun.txt')
 	else:
@@ -279,10 +271,10 @@ elif SORT_ALL_IN_SUBDIRS.lower() == 'no':
 
 ### SPIKE SORTING
 print('using spikesorter: ' + SPIKESORTER) ########## WIP: programmatically solve conda bashrc conflict b/w kilosort and mntSort
-if SPIKESORTER.lower() == 'kilosort':
+if SPIKESORTER == 'kiloSort':
 	print('spikesorting with kilosort')
 	runKiloSort()
-elif SPIKESORTER.lower() == 'mountainsort':
+elif SPIKESORTER == 'mountainSort':
 	### FILE TYPE CONVERSION: only needs to be run the first time
 	convertOEtoMDA()
 	## searches through all MDA files in this project dir tree for matches with recordingIDsToRun.txt
@@ -292,7 +284,7 @@ elif SPIKESORTER.lower() == 'mountainsort':
 	print('\n'.join(rawMDApaths))
 
 	runMntSrt(rawMDApaths) # WIP: make param for mntSrt_run_options 
-elif SPIKESORTER.lower() == 'both':
+elif SPIKESORTER == 'both':
 	#### mountainSort
 	### FILE TYPE CONVERSION: only needs to be run the first time
 	convertOEtoMDA()
@@ -304,19 +296,10 @@ elif SPIKESORTER.lower() == 'both':
 	#### kiloSort
 	print('spikesorting with kilosort')
 	runKiloSort()
-elif SPIKESORTER.lower() == 'none':
+elif SPIKESORTER == 'none':
 	print('you chose not to spikesort')
 else:
 	print('invalid sorter specified as parameter. use kiloSort or mountainSort')
 
 ### VIEW RESULTS
 # reinstateCondaPathInBashrc(BASHRC_DIR)
-
-if OPEN_PHY_FOR_MANUAL_VERIFICATION.lower() == 'yes':
-
-	### get list of prepared kilosort outputs
-
-	### navigate to kilosort dir
-
-	### run phy command
-
