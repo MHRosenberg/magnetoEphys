@@ -11,7 +11,7 @@ import sys
 # import removeCondaPathFromBashrc
 
 ### CHECK THESE PARAMETERS!!!!!!
-SPIKESORTER = 'kiloSort' # use 'kiloSort', mountainSort', 'none', or 'both'
+SPIKESORTER = 'none' # use 'kiloSort', mountainSort', 'none', or 'both'
 SORT_ALL_IN_SUBDIRS = 'no' # 'yes' or 'no' # no requires a pre-populated recordingIDsToRun.txt file and a rawDataPaths to match it in the cwd of this script 
 PATH_a_Analysis = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/'
 PATH_rawParent = os.getcwd()
@@ -20,6 +20,7 @@ PATH_rawParent = os.getcwd()
 KILOSORT_PARAMS_DIR = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/kiloSorting/' #make this file using createChannelMapFile.m
 KILOSORT_RESULTS_DIR = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Data/spikesorting/kiloSorted'
 POSTHOC_MERGE = 'no' # 'yes' or 'no' yes merges together clusters kilosort suspects as being the same etc
+RUN_PHY = 'yes' # 'yes' or 'no' for opening the phy results in a loop
 ###
 
 def removeCondaPathFromBashrc(BASHRC_DIR):
@@ -246,6 +247,44 @@ def runKiloSort():
 						print('rename, move, or delete this dir to rerun the analysis of this dataset')
 	print('\nfinished with kiloSorting: ' + recID)
 
+def usePhyForKilosortManualValidation():
+	os.chdir(KILOSORT_RESULTS_DIR)
+	listOfResultDirs = glob.glob('./*')
+	listOfResultDirs.sort()
+	listOfResultDirs = [s.replace('./', '') for s in listOfResultDirs] 
+	os.chdir(PATH_a_Analysis)
+
+	with open('recordingIDsToRun.txt') as recIDs:
+		recIDs = recIDs.read().splitlines()
+		recIDs.sort()
+		print('\nPreparing to open Phy for manual stage of sorting for the following: ')
+		print('\n'.join(recIDs))
+		print('\namong the following raw paths in rawDataPaths.txt: ')
+		print('\n'.join(listOfResultDirs))
+		print('\nuse SORT_ALL_IN_SUBDIRS = yes to populate rawDataPaths.txt with all raw data in subdirs')
+		
+		for recID in recIDs:
+			for kiloOutputDir in listOfResultDirs:
+				
+				if recID in kiloOutputDir: # nice implicit (sub)string search here
+					print('recID:' + recID)
+					print('kilosort output dir: ' + kiloOutputDir)
+					outputDirFullPath = KILOSORT_RESULTS_DIR + '/' + kiloOutputDir
+					os.chdir(outputDirFullPath)
+
+					# pdb.set_trace()
+
+					### run phy command
+					# try:
+						# os.system('source deactivate')
+					# os.system("bash -c 'source activate phy; phy template-gui ./params.py', shell=True")
+					os.system("bash -c 'source activate phy; phy template-gui ./params.py'")
+					# except:
+					# 	sys.exit('ERROR: conda phy environment activation failed... (omit "source" in "source activate phy" for windows)')
+					# os.system('phy template-gui params.py')
+
+
+
 ### MAIN CODE: 
 
 ### CHOOSING DATA: output = recordingIDsToRun.txt
@@ -302,4 +341,7 @@ else:
 	print('invalid sorter specified as parameter. use kiloSort or mountainSort')
 
 ### VIEW RESULTS
-# reinstateCondaPathInBashrc(BASHRC_DIR)
+
+if RUN_PHY.lower() == 'yes':
+	print('looping over all kilosort outputs in phy for manual stage:')
+	usePhyForKilosortManualValidation()
