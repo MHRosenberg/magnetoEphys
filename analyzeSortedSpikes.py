@@ -6,7 +6,8 @@ import os.path
 ### code from Kyu Lee
 # path to sorting folder
 # path = 'J:/ksort/20180618'
-path = os.getcwd()
+# path = os.getcwd()
+path = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Data/spikesorting/kiloSorted/2018-05-04_13-55-49_MR1_r2_pre2018_07_10__12_55'
 
 # load stuff
 spike_times = np.load(os.path.join(path,'spike_times.npy'))
@@ -39,11 +40,14 @@ for cluster in good_clusters:
     max_p2p_every_channel=np.max(every_channel[cluster],0)-np.min(every_channel[cluster],0)
     max_channel[cluster] = np.where(max_p2p_every_channel==max(max_p2p_every_channel))[0][0]
     
-# output
+### output
 cellid = np.array(list(max_channel.keys()))
 masks=channel_map[list(max_channel.values())].flatten()
 sp = np.array(list(output.values()))
 
-# save as mat
+### save as mat
 sio.savemat(os.path.join(path,'sp.mat'),{'cellid':cellid,'masks':masks,'sp':sp})
 ### end of Kyu's code
+
+### save as numpy
+np.save('spikeData', {'cellid':cellid,'masks':masks,'sp':sp})
