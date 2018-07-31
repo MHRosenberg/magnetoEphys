@@ -69,7 +69,8 @@ class Spikalyze:
         self.sine_timesInSamples = []
         self.sine_vals = []
         self.frequencies = []
-        self.TTL_timesInsecs = []
+        self.TTL_timesInSecs = []
+        self.sine_timesInSecs = []
 
         ### save as mat
         sio.savemat(os.path.join(spikeDir,'sp.mat'),{'cellid':cellid,'masks':masks,'sp':sp})
@@ -88,7 +89,8 @@ class Spikalyze:
         
     
     def spikeDictToList(self):
-        for unit in self.output.keys():
+        print('loading the following units classified as good by the spikesorting user:')
+        for unit in self.output.keys():    
             print(unit)
             unitSpikeTimeLst = []
             for spikeTime in self.output[unit][:][:]:
@@ -114,7 +116,7 @@ class Spikalyze:
                             print('searching for raw data in: ../../raw/')
                             os.chdir('../../raw/')
                         except:
-                            sys.exit('ERROR: unable to locate raw data dir in reasonable parent directories')
+                            sys.exit('ERROR: unable to locate raw data dir in reasonable number of parent directories')
             SEARCH_FOR_THIS = '.events' 
             pathLst = self.recursiveSearch(SEARCH_FOR_THIS)
             for pathInd, path in enumerate(pathLst): 
@@ -183,7 +185,7 @@ class Spikalyze:
         self.TTL_squ_timesInSamples = np.full((self.numTimeStamps_TTL * NUM_PLATEU_PTS), np.nan)     
         self.TTL_squ_vals = np.full((self.numTimeStamps_TTL * NUM_PLATEU_PTS), np.nan)
         self.sine_timesInSamples = np.full((self.numTimeStamps_TTL-2)*NUM_SINE_VALS_PER_TTL//2, np.nan)
-        self.sine_vals = np.full(self.TTL_squ_timesInSamples.shape, np.nan)
+        self.sine_vals = np.full(self.sine_timesInSamples.shape, np.nan)
         self.frequencies = np.full(self.numTimeStamps_TTL//2, np.nan) 
         print('num time stamps: ' + str(self.numTimeStamps_TTL))
         print('TTL_values shape' + str(TTL_values.shape))
@@ -201,14 +203,12 @@ class Spikalyze:
             ### iii: calculate times for sine
             times = np.linspace(TTL_times_in_window[0], TTL_times_in_window[-1], NUM_SINE_VALS_PER_TTL, endpoint = False)
             self.sine_timesInSamples[sineInd:sineInd+NUM_SINE_VALS_PER_TTL] = times
-            
-            
-            ########### current error here!!!!!!!!!!!!!!!! ValueError: could not broadcast input array from shape (512) into shape (356)
-            
             ### iv: calculate vals for sine
-            self.sine_vals[sineInd:sineInd+NUM_SINE_VALS_PER_TTL] = MEAN_SINE_VAL + SINE_AMPLITUDE * np.sin(2 * np.pi * self.frequencies[freqInd] * (self.sine_timesInSamples[sineInd:sineInd+NUM_SINE_VALS_PER_TTL] - self.sine_timesInSamples[sineInd]))
-            
-            
+            try:
+                self.sine_vals[sineInd:sineInd+NUM_SINE_VALS_PER_TTL] = MEAN_SINE_VAL + SINE_AMPLITUDE * np.sin(2 * np.pi * self.frequencies[freqInd] * (self.sine_timesInSamples[sineInd:sineInd+NUM_SINE_VALS_PER_TTL] - self.sine_timesInSamples[sineInd]))
+            except:
+                print('ttlInd:' + str(ttlInd))
+                print('final incomplete sine period discarded --> TO DO: add code to handle this')            
             ### advance indices
             freqInd += 1
             sineInd += NUM_SINE_VALS_PER_TTL
@@ -222,7 +222,7 @@ class Spikalyze:
             newTimeStamps = np.linspace(currentTimeStamp,nextTimeStamp,NUM_PLATEU_PTS, endpoint=False)
             firstNewInd = ttlInd*NUM_PLATEU_PTS
             lastNewInd = (ttlInd+1)*(NUM_PLATEU_PTS)
-            self.TTL_squ_times[firstNewInd:lastNewInd] = newTimeStamps 
+            self.TTL_squ_timesInSamples[firstNewInd:lastNewInd] = newTimeStamps 
             self.TTL_squ_vals[firstNewInd:lastNewInd] = currentValue
             if currentValue == 0:
                 currentValue = 1
@@ -232,12 +232,24 @@ class Spikalyze:
         ### remove trailing nans 
         self.sine_timesInSamples = self.sine_timesInSamples[~np.isnan(self.sine_timesInSamples)] 
         self.sine_vals = self.sine_vals[~np.isnan(self.sine_vals)]
+        
+        ### uncomment this to plot only the sine wave for debugging purposes
+#        f = plt.figure()
+#        plt.plot(self.TTL_squ_timesInSamples, self.TTL_squ_vals, 'o', color = 'b')
+##            plt.plot(TTL_times, TTL_values, 'o', color = 'r')
+#        plt.plot(self.sine_timesInSamples, self.sine_vals, 'o', color = 'g')
+#        f.show()
 
     def plotRasters(self, *args): 
         print('plotting spike rasters:')
         if 'sine' in args: 
             
-            
+            for ttlTime in self.TTL_timesInsecs:
+                
+                ### get all spikes that are nearest to this ttl
+                
+                ## subtract ttl high time from spike times
+                print('to do: plot by ttl phase')
 
             ### plot values
             f = plt.figure()
@@ -245,7 +257,7 @@ class Spikalyze:
 #            plt.plot(TTL_times, TTL_values, 'o', color = 'r')
             plt.plot(self.sine_times, self.sine_vals, 'o', color = 'g')
     
-            
+            ### plt.plot( sineAlignedSpikes)
         
             ### vertical line for debuggin
             # FIRST_VLINE_IND = 243650
@@ -283,6 +295,17 @@ class Spikalyze:
         lineLengths = np.ones(numUnits)
         colorCodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 0, 1]])
         plt.eventplot(self.units_by_spikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
+        
+        Y_OFFSET_FOR_TTLs = 2
+        sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
+        TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
+        try:        
+            plt.plot(self.TTL_squ_timesInSamples, TTL_squ_vals_offset, 'o', color = 'b')
+            plt.plot(self.sine_timesInSamples, sine_vals_offset, 'o', color = 'g')
+    ##            plt.plot(TTL_times, TTL_values, 'o', color = 'r')        
+        except:
+            print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
+        
         plt.show()
         
         ### plot spikes color coded by unit ID and depth on a single sine period
@@ -324,9 +347,9 @@ SPIKE_DIR = os.getcwd() ### directory of spike sorted data
 data = Spikalyze(SPIKE_DIR) ### load sorted data
 
 
-rawDataDir = data.getRawDataDir() ### find the raw data dir from which the sorted data originated
-TTL_timeStamps, TTL_values = data.loadTTLdata()
-data.reconstructSineFromTTLs(TTL_values, TTL_timeStamps)
+#rawDataDir = data.getRawDataDir() ### find the raw data dir from which the sorted data originated
+TTL_times, TTL_values = data.loadTTLdata()
+data.reconstructSineFromTTLs(TTL_values, TTL_times)
 
 
 data.plotRasters()
