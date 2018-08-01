@@ -20,6 +20,8 @@ from pathlib import Path #, PureWindowsPath # only works on 3.4+ (not 2.7)
 # path to sorting folder
 # path = 'J:/ksort/20180618'
 
+### NOTE: assume all times to be in samples unless specified otherwise!
+
 class Spikalyze:
     def __init__(self, spikeDir):
         # load stuff
@@ -64,13 +66,12 @@ class Spikalyze:
         
         ### declare stimulus numpy arrays
         self.numTimeStamps_TTL = []
-        self.TTL_squ_timesInSamples = []
+        self.TTL_squ_timesInSamples = [] ### safest to convert to secs at the last possible point to avoid division errors
         self.TTL_squ_vals = []
-        self.sine_timesInSamples = []
+        self.sine_timesInSamples = [] ### safest to convert to secs at the last possible point to avoid division errors
         self.sine_vals = []
         self.frequencies = []
-        self.TTL_timesInSecs = []
-        self.sine_timesInSecs = []
+        self.sampleRate = []
 
         ### save as mat
         sio.savemat(os.path.join(spikeDir,'sp.mat'),{'cellid':cellid,'masks':masks,'sp':sp})
@@ -87,7 +88,6 @@ class Spikalyze:
                 pathList.append(path)
             return pathList
         
-    
     def spikeDictToList(self):
         print('loading the following units classified as good by the spikesorting user:')
         for unit in self.output.keys():    
@@ -155,10 +155,13 @@ class Spikalyze:
         print('TTL values: ' + str(TTL_values))
         TTL_timeStamps = eventsDict['timestamps']
         print('shape of timestamps: ' + str(TTL_timeStamps.shape))
-        print('time stamps: ' + str(TTL_timeStamps))        
+        print('time stamps: ' + str(TTL_timeStamps))
+        self.sampleRate = eventsDict['header']['sampleRate']
+        print('sample rate (from all_channels.events): ' + str(self.sampleRate))
+                
         return TTL_timeStamps, TTL_values
     
-    def reconstructSineFromTTLs(self, TTL_values, TTL_times):
+    def reconstructSineFromTTLs(self, TTL_values, TTL_times, *args):
         ### I: remove incomplete periods from the front and back of the recording
         ###        i. truncate start
         ### burn extra values cuz there's still something weird...
@@ -189,7 +192,7 @@ class Spikalyze:
         self.frequencies = np.full(self.numTimeStamps_TTL//2, np.nan) 
         print('num time stamps: ' + str(self.numTimeStamps_TTL))
         print('TTL_values shape' + str(TTL_values.shape))
-        self.TTL_timesInsecs = np.divide(TTL_times,SAMPLE_RATE_HZ)  # convert times to units of seconds
+#        self.TTL_timesInsecs = np.divide(TTL_times,SAMPLE_RATE_HZ)  # convert times to units of seconds
 
         ### II: make the sine wave
         NUM_TTLs_IN_WINDOW = 3 #number of points to average over when calculating the freq of the sine wave from TTL inputs (WIP  CODE DOES NOT SUPPORT OTHER VALUES AT PRESENT! )
@@ -233,65 +236,72 @@ class Spikalyze:
         self.sine_timesInSamples = self.sine_timesInSamples[~np.isnan(self.sine_timesInSamples)] 
         self.sine_vals = self.sine_vals[~np.isnan(self.sine_vals)]
         
-        ### uncomment this to plot only the sine wave for debugging purposes
-#        f = plt.figure()
-#        plt.plot(self.TTL_squ_timesInSamples, self.TTL_squ_vals, 'o', color = 'b')
-##            plt.plot(TTL_times, TTL_values, 'o', color = 'r')
-#        plt.plot(self.sine_timesInSamples, self.sine_vals, 'o', color = 'g')
-#        f.show()
+        if 'debug' in args:
+            print('plotting stimulus alone for debugging purposes (remove debug from function call to skip this)')
+        ### DEBUGGING: uncomment this to plot only the sine wave 
+        f = plt.figure()
+        plt.plot(self.frequencies)
+        
+        g = plt.figure()
+        plt.plot(self.TTL_squ_timesInSamples, self.TTL_squ_vals, 'o', color = 'b')
+        plt.plot(TTL_times, TTL_values, 'o', color = 'r')
+        plt.plot(self.sine_timesInSamples, self.sine_vals, 'o', color = 'g')
+        
+        h = plt.figure()
+        plt.plot(np.diff(np.divide(TTL_times, int(self.sampleRate))))
+        
+        f.show()
+        g.show()
+        h.show()
 
     def plotRasters(self, *args): 
         print('plotting spike rasters:')
         if 'sine' in args: 
+            print('plotting ttl aligned spikes')
             
-            for ttlTime in self.TTL_timesInsecs:
-                
-                ### get all spikes that are nearest to this ttl
-                
-                ## subtract ttl high time from spike times
-                print('to do: plot by ttl phase')
-
-            ### plot values
-            f = plt.figure()
-            plt.plot(self.TTL_squ_times, self.TTL_squ_vals, 'o', color = 'b')
-#            plt.plot(TTL_times, TTL_values, 'o', color = 'r')
-            plt.plot(self.sine_times, self.sine_vals, 'o', color = 'g')
-    
-            ### plt.plot( sineAlignedSpikes)
-        
-            ### vertical line for debuggin
-            # FIRST_VLINE_IND = 243650
-            # LAST_VLINE_IND = 243700
-            # for i in range(FIRST_VLINE_IND,LAST_VLINE_IND):
-            #     ind = int(i)
-            #     print(ind)
-                
-            #     val = sine_times[ind]
-            #     print(val)
-            #     plt.axvline(x = val)
-
-        plt.legend(['TTL square', 'TTL transitions', 'reconstructed sine stim'], loc='best')
-        if INSPECT_EACH_PLOT ==1:
-            print('close the plot window to advance to the next channel\nOR set INSPECT_EACH_PLOT to 0')
+            ### TO DO: make this robust to low TTL first without dropping data
+             
+            self.units_x_SpikeSineTimes = []
+            totalNumMatches = 0
+            unitNumMatches = 0            
+            ### IIa: for loop over all the units
+            for unit in range(0,len(self.units_by_spikesLst)):
+                print('aligning spikes to high TTLs for unit: ' + str(unit))
+                ttlSubtractedUnitSpikeTimes = []
+                ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
+                for highTTL in range(0, (len(TTL_times)//2)-2, 2):
+                    ### III: get earliest and latest time for this sine/TTL period
+                    earliestTime = TTL_times[highTTL]
+                    latestTime = TTL_times[highTTL+2] - 1 ## skip the low TTL; subtract one to avoid double counting 
+                    ### IV: find all values in spikes in III's time window and append unit's sine aligned spike list
+                    for spikeTime in self.units_by_spikesLst[unit]:
+                        if spikeTime > earliestTime and spikeTime < latestTime:
+                            ### V: subtract high TTL times from IV
+                            ttlSubtractedUnitSpikeTimes.append(spikeTime - earliestTime) 
+                            print('match added to sine aligned 2d list')
+                            print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
+                            totalNumMatches += 1
+                            unitNumMatches += 1
+                    ### VII: append unit spike list to unit list
+                self.units_x_SpikeSineTimes.append(ttlSubtractedUnitSpikeTimes)
+                ttlSubtractedUnitSpikeTimes = []
+                unitNumMatches = 0
+            
+            print('plotting spikes aligned to TTL (sine) phase:')
+            plt.figure()
+            LINE_LENGTHS = 0.8
+            plt.eventplot(self.units_x_SpikeSineTimes, linelengths = LINE_LENGTHS) #, linelengths = lineLengths)
             plt.show()
-            
-            print('ploting rasters aligned to the sine period.')
-            
-
-            ### load TTL pulses
-
-            ### recreate square wave
-
-            ### recreate sine wave
+            print('done')
 
         elif not args:
             print('no argument provided --> plotting generic rasters')
-        
 
-        ### plot spikes over recording length with TTL sine wave
-        f = plt.figure()
+        ### plot spikes over recording length (with TTL stimuli if present)
+        plt.figure()
         numUnits = len(self.units_by_spikesLst)
-        ###### TO DO: auto generate appropriate line lengths and colorCodes for the given num of neurons
+        
+        ####################### TO DO: auto generate appropriate line lengths and colorCodes for the given num of neurons
         lineLengths = np.ones(numUnits)
         colorCodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 0, 1]])
         plt.eventplot(self.units_by_spikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
@@ -299,18 +309,19 @@ class Spikalyze:
         Y_OFFSET_FOR_TTLs = 2
         sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
         TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
+        TTL_vals_offset = TTL_values - Y_OFFSET_FOR_TTLs
         try:        
             plt.plot(self.TTL_squ_timesInSamples, TTL_squ_vals_offset, 'o', color = 'b')
             plt.plot(self.sine_timesInSamples, sine_vals_offset, 'o', color = 'g')
-    ##            plt.plot(TTL_times, TTL_values, 'o', color = 'r')        
+            plt.plot(TTL_times, TTL_vals_offset, 'o', color = 'r')
+            print('stimuli plotted as negative y values')        
         except:
             print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
-        
         plt.show()
         
-        ### plot spikes color coded by unit ID and depth on a single sine period
+        ### TO DO: plot spikes color coded by unit ID and depth on a single sine period
 
-        ### save plots to output dir
+        ### TO DO: save plots to output dir
 
     def plotSpectra(self):
         print('TO DO: plotting spectra for units and stimulus')
@@ -328,7 +339,7 @@ NUM_CH = 64
 SAMPLE_RATE_HZ = 30000
 FIRST_CH = 1 # 1 indexed
 LAST_CH = 3
-INSPECT_EACH_PLOT = 0 # 0 for no; 1 for yes
+#INSPECT_EACH_PLOT = 0 # 0 for no; 1 for yes
 OPEN_EACH_PDF = 0 # 1 to open each psd plot pdf before proceeding to the next plot
 SAVE_TO_PDF = 0
 
@@ -349,11 +360,11 @@ data = Spikalyze(SPIKE_DIR) ### load sorted data
 
 #rawDataDir = data.getRawDataDir() ### find the raw data dir from which the sorted data originated
 TTL_times, TTL_values = data.loadTTLdata()
-data.reconstructSineFromTTLs(TTL_values, TTL_times)
+data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # debug flab plots the stimulus alone
 
 
-data.plotRasters()
-# data.plotRasters('sine') ### TO DO
+#data.plotRasters()
+data.plotRasters('sine') ### TO DO
 
 data.plotSpectra()
 
