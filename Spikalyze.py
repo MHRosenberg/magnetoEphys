@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import style
 from matplotlib import pyplot as plt 
+import matplotlib.gridspec as gridspec
 from matplotlib.backends.backend_pdf import PdfPages
 from pathlib import Path #, PureWindowsPath # only works on 3.4+ (not 2.7)
+from scipy.signal import welch, hanning
 
 ### the majority of the __init__ code is rom Kyu Lee's analyzeSortedSpikes.py
 # path to sorting folder
@@ -61,6 +63,10 @@ class Spikalyze:
 
         sp = np.array(list(self.output.values()))
         
+        ### save as mat
+        sio.savemat(os.path.join(spikeDir,'sp.mat'),{'cellid':cellid,'masks':masks,'sp':sp})
+        ### end of Kyu's code
+        
         self.units_by_spikesLst = []
         self.units_by_spikesLst = self.spikeDictToList()
         
@@ -72,10 +78,6 @@ class Spikalyze:
         self.sine_vals = []
         self.frequencies = []
         self.sampleRate = []
-
-        ### save as mat
-        sio.savemat(os.path.join(spikeDir,'sp.mat'),{'cellid':cellid,'masks':masks,'sp':sp})
-        ### end of Kyu's code
 
         ### save as numpy
         np.save('spikeData', {'cellid':cellid,'masks':masks,'sp':sp})
@@ -156,7 +158,7 @@ class Spikalyze:
         TTL_timeStamps = eventsDict['timestamps']
         print('shape of timestamps: ' + str(TTL_timeStamps.shape))
         print('time stamps: ' + str(TTL_timeStamps))
-        self.sampleRate = eventsDict['header']['sampleRate']
+        self.sampleRate = int(eventsDict['header']['sampleRate'])
         print('sample rate (from all_channels.events): ' + str(self.sampleRate))
                 
         return TTL_timeStamps, TTL_values
@@ -237,22 +239,31 @@ class Spikalyze:
         self.sine_vals = self.sine_vals[~np.isnan(self.sine_vals)]
         
         if 'debug' in args:
-            print('plotting stimulus alone for debugging purposes (remove debug from function call to skip this)')
-        ### DEBUGGING: uncomment this to plot only the sine wave 
-        f = plt.figure()
-        plt.plot(self.frequencies)
-        
-        g = plt.figure()
-        plt.plot(self.TTL_squ_timesInSamples, self.TTL_squ_vals, 'o', color = 'b')
-        plt.plot(TTL_times, TTL_values, 'o', color = 'r')
-        plt.plot(self.sine_timesInSamples, self.sine_vals, 'o', color = 'g')
-        
-        h = plt.figure()
-        plt.plot(np.diff(np.divide(TTL_times, int(self.sampleRate))))
-        
-        f.show()
-        g.show()
-        h.show()
+            print('plotting stimulus alone for debugging purposes (remove debug from function call to skip this)') 
+            f = plt.figure()
+            plt.ylabel('TTL (eg sine) freq in Hz:')
+            plt.xlabel('TTL num')
+            freqsInSecs = np.multiply(self.frequencies, self.sampleRate)
+            plt.plot(freqsInSecs)
+            
+            g = plt.figure()
+            plt.ylabel('AU')
+            plt.xlabel('seconds')
+            TTLsquTimesSecs = self.TTL_squ_timesInSamples * self.sampleRate
+            plt.plot(TTLsquTimesSecs, self.TTL_squ_vals, 'o', color = 'b')
+            TTLtimesSecs = TTL_times * self.sampleRate
+            plt.plot(TTLtimesSecs, TTL_values, 'o', color = 'r')
+            sine_timesSecs = self.sine_timesInSamples * self.sampleRate
+            plt.plot(sine_timesSecs, self.sine_vals, 'o', color = 'g')
+            
+            h = plt.figure()
+            plt.ylabel('interval between TTL pulses in secs')
+            plt.xlabel('TTL num')
+            plt.plot(np.diff(np.multiply(TTL_times, 1/self.sampleRate)))
+            
+            f.show()
+            g.show()
+            h.show()
 
     def plotRasters(self, *args): 
         print('plotting spike rasters:')
@@ -319,39 +330,127 @@ class Spikalyze:
             print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
         plt.show()
         
-        ### TO DO: plot spikes color coded by unit ID and depth on a single sine period
 
         ### TO DO: save plots to output dir
 
     def plotSpectra(self):
         print('TO DO: plotting spectra for units and stimulus')
-
-    ### Welch PSD
-
-    ### periodogram
-
-    ### magnitude spectrum
-
-    ### save plots to output dir
+        
+        
+        ### Welch PSD
+        ### sine stimulus
+        # nblock = 1024
+        nblock = 46080 # 1024*30*1.5
+        overlap = 128
+        # win = hanning(nblock, True)
+        # f, Pxx_den = welch(sine_vals, SAMPLE_RATE_HZ, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
+        win = hanning(nblock, False)
+        welchFreqs_sine, Pxx_den = welch(self.sine_vals, self.sampleRate, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
     
-### ANALYSIS PARAMETERS:
-NUM_CH = 64
-SAMPLE_RATE_HZ = 30000
-FIRST_CH = 1 # 1 indexed
-LAST_CH = 3
-#INSPECT_EACH_PLOT = 0 # 0 for no; 1 for yes
-OPEN_EACH_PDF = 0 # 1 to open each psd plot pdf before proceeding to the next plot
-SAVE_TO_PDF = 0
+        fig = plt.figure()
+        NUM_ROWS = 4
+        NUM_COLUMNS = 1
+        gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS)
+        rowPosition = 0
+        columnPosition = 0
+
+#        plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes
+        plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+        rowPosition += 1
+        
+        plt.title('sine stimulus Welch PSD')
+        plt.xlabel('frequency [Hz]')
+        plt.ylabel('PSD [V**2/Hz?]')
+        plt.semilogy(welchFreqs_sine,Pxx_den, '-o')
+        # plt.plot(bins[:-1], hist)#, width = binSizeInSamples)
+        # plt.xlim(min(binEdges), max(binEdges))
+#        plt.show()
+        
+        ### neurons
+        nblock = 1024
+#        nblock = 46080 # 1024*30*1.5
+        overlap = 128
+        # f, Pxx_den = welch(sine_vals, SAMPLE_RATE_HZ, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
+        win = hanning(nblock, False)
+#        plt.subplot(612)
+        
+#        ax1 = 
+#        
+#        ax2 = 
+        
+        
+        plt.title('neurons\' Welch PSD')
+        plt.xlabel('frequency [Hz]')
+        plt.ylabel('PSD [V**2/Hz?]')
+        fig.subplots_adjust(hspace = 1.0)
+#        plt.show()
+        
+        numUnits = len(self.units_by_spikesLst)
+        for unit in range(0,numUnits):
+            t = "unit: {0}".format(unit)
+            print(t)            
+            try:
+                welchFreqs_neuron, Pxx_den = welch(self.units_by_spikesLst[unit], self.sampleRate, window=win, noverlap=overlap, nfft=nblock, return_onesided=True)
+                
+                ### Welch PSD
+                plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+                rowPosition += 1
+                plt.semilogy(welchFreqs_neuron,Pxx_den, '-o')
+                plt.hold()
+    
+                ### magnitude spectrum
+                plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+                plt.magnitude_spectrum(self.units_by_spikesLst[unit], Fs = self.sampleRate, scale = 'dB')
+                plt.hold()
+                rowPosition -= 1
+            
+            except:
+                t = "\n\nskipping unit: {0} cuz it probably throws: ValueError: window is longer than input signal\n\n".format(unit)
+                print(t)
+            plt.show()
+
+            
+            
+
+#        fig.tight_layout()
+        fig.set_size_inches(w=15,h=8)
+        fig_name = 'plot.png'
+        fig.savefig(fig_name)
+        
+        plt.show()
+        
+#        f = plt.figure() # first page 
+#        ax1 = plt.subplot(311)
+#        plt.plot(data[:,chInd])
+#        plt.subplot(312)
+#        Pxx, freqs = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+            
+        # freqs, Pxx  = plt.psd(data[:,chInd], 2048, SAMPLE_RATE_HZ)
+#        plt.subplot(313)
+        # extraTicks = [-50, -25, -10, -5, -2, -1, 0,1]
+        # plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF], yticks = list(plt.yticks()[0]) + extraTicks)
+#        plt.semilogy(freqs[0:HIGH_FREQ_CUTOFF],Pxx[0:HIGH_FREQ_CUTOFF])
 
 
-## TTL plotting paramete
-FIRST_TTL_IND = 2 # skip the first one because this is presumably truncated wrt to the normal period
-LAST_TTL_IND = -1 # use -1 to go until the end
+            
+        
+        
+        ### spectrogram 
+#        plt.subplot(312)
+#        Pxx, freqs, bins, im = plt.specgram(data[:,chInd], NFFT=NFFT, Fs=SAMPLE_RATE_HZ, noverlap=900)
+    
+        ### periodogram
+    
+        
+    
+        ### save plots to output dir
+
+### TTL plotting parameters
 NUM_PLATEU_PTS = 20 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
 MEAN_SINE_VAL = 0.5
 SINE_AMPLITUDE = 0.6
 NUM_SINE_VALS_PER_TTL = 512
-
+    
 ### main code execution (call desired )
 
 SPIKE_DIR = os.getcwd() ### directory of spike sorted data
@@ -360,13 +459,19 @@ data = Spikalyze(SPIKE_DIR) ### load sorted data
 
 #rawDataDir = data.getRawDataDir() ### find the raw data dir from which the sorted data originated
 TTL_times, TTL_values = data.loadTTLdata()
-data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # debug flab plots the stimulus alone
 
 
+#data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
+data.reconstructSineFromTTLs(TTL_values, TTL_times)
+
+### plot rasters
 #data.plotRasters()
-data.plotRasters('sine') ### TO DO
+#data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
 
+### plot PSDs
 data.plotSpectra()
+
+
 
 print('finished!')
 
