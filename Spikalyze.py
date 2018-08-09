@@ -345,11 +345,12 @@ class Spikalyze:
 #        plt.eventplot(self.unitsXspikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
         plt.eventplot(self.unitsXspikesLst[:][:]) #, linelengths = lineLengths)
         
-        Y_OFFSET_FOR_TTLs = 2
-        sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
-        TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
-        TTL_vals_offset = TTL_values - Y_OFFSET_FOR_TTLs
-        try:        
+        
+        try:       
+            Y_OFFSET_FOR_TTLs = 2
+            sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
+            TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
+            TTL_vals_offset = TTL_values - Y_OFFSET_FOR_TTLs
             plt.plot(self.TTL_squ_timesInSecs, TTL_squ_vals_offset, 'o', color = 'b')
             plt.plot(self.sine_timesInSecs, sine_vals_offset, 'o', color = 'g')
             plt.plot(TTL_times, TTL_vals_offset, 'o', color = 'r')
@@ -361,16 +362,20 @@ class Spikalyze:
 
         ### TO DO: save plots to output dir
 
-    def plotSpectra(self):
+    def plotSpectra(self, FIRST_SAMPLE, LAST_SAMPLE):
         print('\nplotting spectra for units and stimulus')
         
         totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
+        if totalStimDurationSecs > 10: ## stimulus duration must be longer than 10 secs to plot it
+            plotSine = True
+        else:
+            plotSine = False
+            FIRST_SAMPLE = 0
+            LAST_SAMPLE = np.max(np.max(self.unitsXspikesLst))
+            totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
         
-        ### sine stim's bin'd sample rate
-        sineStimSampleRate = self.sine_vals.shape[0] / totalStimDurationSecs
-        print('sineStimSampleRate = {0}'.format(sineStimSampleRate))
         ### neuron's bin'd sample rate
-        numBins, remainderSecs = np.divmod(totalStimDurationSecs, BIN_SIZE_SEC)
+        numBins, remainderSecs = np.divmod(totalStimDurationSecs, BIN_SIZE_SEC) ### totalStimDuration is from 0 to the last spike time if no TTLs are present
         bins = np.linspace(FIRST_SAMPLE, FIRST_SAMPLE + round(float(numBins) * float(BIN_SIZE_SEC)), int(numBins), endpoint=True) 
         binSampleRate = 1./np.mean(np.diff(bins))
         
@@ -379,25 +384,45 @@ class Spikalyze:
         
         ### Welch PSD
         ### sine stimulus
-        welchFreqs_sine, Pxx_den = welch(self.sine_vals, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
-    
-        NUM_ROWS = 3
-        NUM_COLUMNS = 1 
-        ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
-        ### plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes        
-        FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
-        fig = plt.figure(figsize = FIG_SIZE)
-        rowPosition = 0
-        columnPosition = 0
-
-        ### sine stimulus
-        ax1 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-        rowPosition += 1
-        ax1.set_title('sine stimulus Welch PSD')
-        ax1.set_xlabel('frequency [Hz]')
-        ax1.set_ylabel('PSD [V**2/Hz?]')
-        ax1.semilogy(welchFreqs_sine,Pxx_den, '-o')
-        ax1.set_xlim(0, MAX_FREQ_PLOTTED)
+        if plotSine == True:
+            ### sine stim's bin'd sample rate
+            try:
+                sineStimSampleRate = self.sine_vals.shape[0] / totalStimDurationSecs
+            except:
+                sys.exit('\n\nERROR: You probably need to uncomment data.reconstructSineFromTTLs(TTL_values, TTL_times) below to get the TTLs...\n\n')
+            print('sineStimSampleRate = {0}'.format(sineStimSampleRate))
+            welchFreqs_sine, Pxx_den = welch(self.sine_vals, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
+            
+            ### set up figure assuming the sine is present
+            NUM_ROWS = 3
+            NUM_COLUMNS = 1 
+            ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
+            ### plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes        
+            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
+            fig = plt.figure(figsize = FIG_SIZE)
+            rowPosition = 0
+            columnPosition = 0
+            
+            ### sine stimulus
+            ax1 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+            rowPosition += 1
+            ax1.set_title('sine stimulus Welch PSD')
+            ax1.set_xlabel('frequency [Hz]')
+            ax1.set_ylabel('PSD [V**2/Hz?]')
+            ax1.semilogy(welchFreqs_sine,Pxx_den, '-o')
+            ax1.set_xlim(0, MAX_FREQ_PLOTTED)
+        
+        elif plotSine == False:
+            print('sine stimulus sample rate calculation failed (this is expected if there are no TTLs for this recording)')
+            ### set up the figure if there's no sine stimulus
+            NUM_ROWS = 2
+            NUM_COLUMNS = 1 
+            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
+            fig = plt.figure(figsize = FIG_SIZE)
+            rowPosition = 0
+            columnPosition = 0
+        
+        
         
         ### neurons
         ax2 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
@@ -490,21 +515,21 @@ data = Spikalyze(SPIKE_DIR) ### load sorted data
 TTL_times, TTL_values = data.loadTTLdata()
 
 
-#data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
-data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
+data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
+#data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
 
 ### plot rasters
-#data.plotRasters()
-data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
+data.plotRasters()
+#data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
 
 ### plot PSDs
 ### neural PSD parameters
 FIRST_SAMPLE = TTL_times[0] 
 LAST_SAMPLE = TTL_times[-2] 
 BIN_SIZE_SEC = 5/1000 ### ms bin size
-MAX_FREQ_PLOTTED = 10
+MAX_FREQ_PLOTTED = 15
 UNITS_PLOTTED = [0, 0] # use [0, 0] to plot all of them
-data.plotSpectra()
+data.plotSpectra(FIRST_SAMPLE, LAST_SAMPLE)
 
 
 
