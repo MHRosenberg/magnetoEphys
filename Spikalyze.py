@@ -391,7 +391,7 @@ class Spikalyze:
             except:
                 sys.exit('\n\nERROR: You probably need to uncomment data.reconstructSineFromTTLs(TTL_values, TTL_times) below to get the TTLs...\n\n')
             print('sineStimSampleRate = {0}'.format(sineStimSampleRate))
-            welchFreqs_sine, Pxx_den = welch(self.sine_vals, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
+            welchFreqs_sine, Pxx_den = welch(self.sine_vals, nperseg = sineStimSampleRate * 100, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
             
             ### set up figure assuming the sine is present
             NUM_ROWS = 3
@@ -466,7 +466,7 @@ class Spikalyze:
             welchFreqs_neuron, Pxx_den = welch(unit_hist,
                fs= binSampleRate, # sample rate
                window='hanning',   # apply a Hanning window before taking the DFT
-               nperseg=1024,        # compute periodograms of 1024-long segments of x
+               nperseg= self.sampleRate,        # compute periodograms of 1024-long segments of x
                detrend='constant')
             ax2.semilogy(welchFreqs_neuron,Pxx_den, '-o', label = str(unit))
 #            ax2.plot(welchFreqs_neuron,Pxx_den, '-o')
@@ -474,7 +474,7 @@ class Spikalyze:
             
             ### Welch PSD
 #            ax3.psd(unit_hist, binSampleRate, pad_to=1024, detrend = 'mean') # try pad_to to increase the number of points... 
-            ax3.psd(unit_hist, Fs= binSampleRate, NFFT=1024, marker='o') 
+            ax3.psd(unit_hist, Fs= binSampleRate, NFFT= self.sampleRate, marker='o') 
             
             ### magnitude spectrum
 #            ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, scale = 'dB', marker = 'o')
@@ -504,7 +504,7 @@ class Spikalyze:
 NUM_PLATEU_PTS = 20 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
 MEAN_SINE_VAL = 0.5
 SINE_AMPLITUDE = 0.6
-NUM_SINE_VALS_PER_TTL = 100
+NUM_SINE_VALS_PER_TTL = 1000
 
 ####### main code execution (call desired )
 SPIKE_DIR = os.getcwd() ### directory of spike sorted data
@@ -515,12 +515,12 @@ data = Spikalyze(SPIKE_DIR) ### load sorted data
 TTL_times, TTL_values = data.loadTTLdata()
 
 
-data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
-#data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
+#data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
+data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
 
 ### plot rasters
-data.plotRasters()
-#data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
+#data.plotRasters()
+data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
 
 ### plot PSDs
 ### neural PSD parameters
