@@ -291,47 +291,46 @@ class Spikalyze:
 #            f.show()
 #            g.show()
 #            h.show()
+            
+    def alignSpikesToSine(self):
+        ### TO DO: make this robust to low TTL first without dropping data 
+        self.units_x_SpikeSineTimes = []
+        totalNumMatches = 0
+        unitNumMatches = 0            
+        ### IIa: for loop over all the units
+        for unit in range(0,len(self.unitsXspikesLst)):
+            print('aligning spikes to high TTLs for unit: ' + str(unit))
+            ttlSubtractedUnitSpikeTimes = []
+            ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
+            for highTTL in range(0, (len(TTL_times)//2)-2, 2):
+                ### III: get earliest and latest time for this sine/TTL period
+                earliestTime = TTL_times[highTTL]
+                latestTime = TTL_times[highTTL+2] ## skip the low TTL; ################# WARNING: does this need to have something added to avoid double counting the boundaries?
+                ### IV: find all values in spikes in III's time window and append unit's sine aligned spike list
+                for spikeTime in self.unitsXspikesLst[unit]:
+                    if spikeTime > earliestTime and spikeTime < latestTime:
+                        ### V: subtract high TTL times from IV
+                        ttlSubtractedUnitSpikeTimes.append(spikeTime - earliestTime) 
+                        print('match added to sine aligned 2d list')
+                        print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
+                        totalNumMatches += 1
+                        unitNumMatches += 1
+                ### VII: append unit spike list to unit list
+            self.units_x_SpikeSineTimes.append(ttlSubtractedUnitSpikeTimes)
+            ttlSubtractedUnitSpikeTimes = []
+            unitNumMatches = 0
+        return self.units_x_SpikeSineTimes
 
     def plotRasters(self, *args): 
         print('plotting spike rasters:')
-        if 'sine' in args: 
-            print('plotting ttl aligned spikes')
-            
-            ### TO DO: make this robust to low TTL first without dropping data
-             
-            self.units_x_SpikeSineTimes = []
-            totalNumMatches = 0
-            unitNumMatches = 0            
-            ### IIa: for loop over all the units
-            for unit in range(0,len(self.unitsXspikesLst)):
-                print('aligning spikes to high TTLs for unit: ' + str(unit))
-                ttlSubtractedUnitSpikeTimes = []
-                ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
-                for highTTL in range(0, (len(TTL_times)//2)-2, 2):
-                    ### III: get earliest and latest time for this sine/TTL period
-                    earliestTime = TTL_times[highTTL]
-                    latestTime = TTL_times[highTTL+2] ## skip the low TTL; ################# WARNING: does this need to have something added to avoid double counting the boundaries?
-                    ### IV: find all values in spikes in III's time window and append unit's sine aligned spike list
-                    for spikeTime in self.unitsXspikesLst[unit]:
-                        if spikeTime > earliestTime and spikeTime < latestTime:
-                            ### V: subtract high TTL times from IV
-                            ttlSubtractedUnitSpikeTimes.append(spikeTime - earliestTime) 
-                            print('match added to sine aligned 2d list')
-                            print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
-                            totalNumMatches += 1
-                            unitNumMatches += 1
-                    ### VII: append unit spike list to unit list
-                self.units_x_SpikeSineTimes.append(ttlSubtractedUnitSpikeTimes)
-                ttlSubtractedUnitSpikeTimes = []
-                unitNumMatches = 0
-            
+        if 'sine' in args:              
             print('plotting spikes aligned to TTL (sine) phase:')
+            self.units_x_SpikeSineTimes = self.alignSpikesToSine()            
             plt.figure()
             LINE_LENGTHS = 0.8
             plt.eventplot(self.units_x_SpikeSineTimes, linelengths = LINE_LENGTHS) #, linelengths = lineLengths)
             plt.show()
             print('done')
-
         elif not args:
             print('no argument provided --> plotting generic rasters')
 
@@ -344,7 +343,6 @@ class Spikalyze:
         colorCodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 0, 1]])
 #        plt.eventplot(self.unitsXspikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
         plt.eventplot(self.unitsXspikesLst[:][:]) #, linelengths = lineLengths)
-        
         
         try:       
             Y_OFFSET_FOR_TTLs = 2
@@ -359,7 +357,6 @@ class Spikalyze:
             print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
         plt.show()
         
-
         ### TO DO: save plots to output dir
 
     def plotSpectra(self, FIRST_SAMPLE, LAST_SAMPLE):
@@ -421,9 +418,7 @@ class Spikalyze:
             fig = plt.figure(figsize = FIG_SIZE)
             rowPosition = 0
             columnPosition = 0
-        
-        
-        
+
         ### neurons
         ax2 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
         rowPosition += 1
@@ -466,15 +461,15 @@ class Spikalyze:
             welchFreqs_neuron, Pxx_den = welch(unit_hist,
                fs= binSampleRate, # sample rate
                window='hanning',   # apply a Hanning window before taking the DFT
-               nperseg= self.sampleRate,        # compute periodograms of 1024-long segments of x
+               nperseg= self.sampleRate / 10,        # number of samples to include in the sliding window
                detrend='constant')
             ax2.semilogy(welchFreqs_neuron,Pxx_den, '-o', label = str(unit))
 #            ax2.plot(welchFreqs_neuron,Pxx_den, '-o')
 #            ax2.legend(['unit: {0}'.format(unit)])
             
             ### Welch PSD
-#            ax3.psd(unit_hist, binSampleRate, pad_to=1024, detrend = 'mean') # try pad_to to increase the number of points... 
-            ax3.psd(unit_hist, Fs= binSampleRate, NFFT= self.sampleRate, marker='o') 
+#            ax3.psd(unit_hist, binSampleRate, pad_to=1024, detrend = 'mean') 
+#            ax3.psd(unit_hist, Fs= binSampleRate, NFFT= self.sampleRate, marker='o')  ### <-- probably closer to working
             
             ### magnitude spectrum
 #            ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, scale = 'dB', marker = 'o')
@@ -497,9 +492,53 @@ class Spikalyze:
         
         plt.show()
                
+        ### TO DO: save plots to output dir
     
-        ### save plots to output dir
-
+    def plotPSTHs(self, BIN_SIZE_SEC):
+        print("Plotting PSTHs")
+        
+        ### check for the existence of self.units_x_SpikeSineTimes run alignSpikesToSine() if it doens't exist
+        try:
+            self.units_x_SpikeSineTimes
+        except AttributeError:
+            self.alignSpikesToSine()
+        
+        ### generate bins
+        latestSpikeTime = np.amax(np.amax(self.units_x_SpikeSineTimes))
+        numBins, remainderSecs = np.divmod(latestSpikeTime, BIN_SIZE_SEC)
+        
+#        finalTimePt = float(numBins) * float(BIN_SIZE_SEC) # old version
+        finalTimePt = float(numBins+1) * float(BIN_SIZE_SEC) # this discards the the final remaining timepoints that don't fit into a bin
+        
+        bins = np.linspace(0, finalTimePt, int(numBins), endpoint=True) ### size 34 or 35?
+        
+        ### pre allocate PSTH mat
+        numUnits = int(len(self.units_x_SpikeSineTimes))
+        self.PSTHs = np.full((numUnits,int(numBins)), np.nan) 
+        
+        ###### figure initialization
+        ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
+        ### plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes        
+        NUM_ROWS = numUnits
+        NUM_COLUMNS = 1 
+        FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
+        fig = plt.figure(figsize = FIG_SIZE)
+        rowPosition = 0
+        columnPosition = 0
+        for unitInd in range(0, numUnits): 
+            print('plotting PSTH for unit: {0} of {1} total'.format(unitInd,numUnits))
+            unitPSTH, binEdges = np.histogram(self.units_x_SpikeSineTimes[unitInd], bins)   #size 34?         
+            
+            ### plot the PSTHs for each unit
+#            plt.plot(binEdges,unitPSTH,label=str(unitInd))  # throws an error
+            plt.plot(unitPSTH,label=str(unitInd))  # works but shows the bin number and not the bin values
+#            self.PSTHs[unitInd,:] = unitPSTH # TO DO: make this work and check for off by one errors in the binning process
+        plt.legend()
+        plt.show()
+#            rowPosition += 1
+        
+################################################################## MAIN CODE EXECUTION BELOW ##################################################################
+        
 ### TTL plotting parameters
 NUM_PLATEU_PTS = 20 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
 MEAN_SINE_VAL = 0.5
@@ -510,26 +549,28 @@ NUM_SINE_VALS_PER_TTL = 1000
 SPIKE_DIR = os.getcwd() ### directory of spike sorted data
 data = Spikalyze(SPIKE_DIR) ### load sorted data
 
-
-#rawDataDir = data.getRawDataDir() ### find the raw data dir from which the sorted data originated
-TTL_times, TTL_values = data.loadTTLdata()
-
+TTL_times, TTL_values = data.loadTTLdata() # implicitly calls getRawDataDir()
 
 #data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
 data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
 
 ### plot rasters
 #data.plotRasters()
-data.plotRasters('sine') # flag aligns all spikes to the TTL pulses
+#data.plotRasters('sine') # flag plots all spikes from each unit as one row aligned to the TTL pulses
 
 ### plot PSDs
 ### neural PSD parameters
 FIRST_SAMPLE = TTL_times[0] 
 LAST_SAMPLE = TTL_times[-2] 
-BIN_SIZE_SEC = 5/1000 ### ms bin size
+BIN_SIZE_SEC = 5/1000 ### 5 ms bin size
 MAX_FREQ_PLOTTED = 15
 UNITS_PLOTTED = [0, 0] # use [0, 0] to plot all of them
-data.plotSpectra(FIRST_SAMPLE, LAST_SAMPLE)
+
+#data.plotSpectra(FIRST_SAMPLE, LAST_SAMPLE) #uncomment to run
+
+### plot PSTHs
+BIN_SIZE_SEC = 10/1000 ### 10 ms bin size
+data.plotPSTHs(BIN_SIZE_SEC)
 
 
 
