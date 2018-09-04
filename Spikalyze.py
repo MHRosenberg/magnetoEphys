@@ -297,11 +297,13 @@ class Spikalyze:
         self.units_x_SpikeSineTimes = []
         totalNumMatches = 0
         unitNumMatches = 0            
+        sineInd = 0
         ### IIa: for loop over all the units
         for unit in range(0,len(self.unitsXspikesLst)):
             print('aligning spikes to high TTLs for unit: ' + str(unit))
             ttlSubtractedUnitSpikeTimes = []
             ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
+            
             for highTTL in range(0, (len(TTL_times)//2)-2, 2):
                 ### III: get earliest and latest time for this sine/TTL period
                 earliestTime = TTL_times[highTTL]
@@ -315,11 +317,13 @@ class Spikalyze:
                         print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
                         totalNumMatches += 1
                         unitNumMatches += 1
-                ### VII: append unit spike list to unit list
+                    sineInd += 1
+            ### VII: append unit spike list to unit list
             self.units_x_SpikeSineTimes.append(ttlSubtractedUnitSpikeTimes)
             ttlSubtractedUnitSpikeTimes = []
             unitNumMatches = 0
-        return self.units_x_SpikeSineTimes
+        self.numSinePeriods = sineInd
+        return self.units_x_SpikeSineTimes, self.numSinePeriods
 
     def plotRasters(self, *args): 
         print('plotting spike rasters:')
@@ -528,12 +532,14 @@ class Spikalyze:
         for unitInd in range(0, numUnits): 
             print('plotting PSTH for unit: {0} of {1} total'.format(unitInd,numUnits))
             unitPSTH, binEdges = np.histogram(self.units_x_SpikeSineTimes[unitInd], bins)   #size 34?         
-            
+            unitPSTH = unitPSTH / self.numSinePeriods
             ### plot the PSTHs for each unit
 #            plt.plot(binEdges,unitPSTH,label=str(unitInd))  # throws an error
             plt.plot(unitPSTH,label=str(unitInd))  # works but shows the bin number and not the bin values
 #            self.PSTHs[unitInd,:] = unitPSTH # TO DO: make this work and check for off by one errors in the binning process
         plt.legend()
+        plt.xlabel('bin num (10 ms/bin')
+        plt.ylabel('mean spikes per 10 ms bin')
         plt.show()
 #            rowPosition += 1
         
