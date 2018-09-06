@@ -203,13 +203,11 @@ def recursiveSearch(exten):
     return pathList
 
 def convertOEtoMDA():
-    ### mountain sort loop
-    eng = matlab.engine.start_matlab()
-    eng.addpath(MNTSRT_PARAMS_DIR)
     os.chdir(callingDir)
     with open('recordingIDsToRun.txt') as recIDs, open('rawDataPaths.txt') as rawPaths:
         recIDs = recIDs.read().splitlines()
         rawPaths = rawPaths.read().splitlines()
+        engineRunning = False 
         for recID in recIDs:
             for rawPath in rawPaths:
                 if recID in rawPath:
@@ -217,6 +215,11 @@ def convertOEtoMDA():
                     os.chdir(PATH_spikeSortedParent)
                     saveLocation = PATH_spikeSortedParent +'/mountainSorted/' + recID.strip() 
                     if not os.path.exists(saveLocation):
+                        if engineRunning == False:
+                            eng = matlab.engine.start_matlab() ### only start the matlab engine if it's not already running
+                            engineRunning = True
+                        eng.addpath(MNTSRT_PARAMS_DIR)
+                        
                         os.makedirs(saveLocation)
                         print('created mountainSort dir: ' + saveLocation)
                         print('converting open ephys to MDA format')
@@ -250,9 +253,9 @@ def getRawMDApaths():
 
 def getProbeGeometryCsv(probeType):
     if probeType.lower() == '64f':
-        probeGeometryCsvFullpath = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/mountainSorting/geom64f.csv'
+        probeGeometryCsvFullpath = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/mountainSorting/geom64F.csv'
     elif probeType.lower() == '64g':
-        probeGeometryCsvFullpath = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/mountainSorting/geom64g.csv'
+        probeGeometryCsvFullpath = '/media/matthew/Data/a_Ephys/a_Projects/a_Magnetoreception/a_Analysis/spikeSorting/mountainSorting/geom64G.csv'
     elif probeType.lower() == 'ADD NEW PROBE TYPES HERE!': ### <-- add new ones here
         probeGeometryCsvFullpath = 'ADD NEW PROBE FULL PATH (INCLUDING geomX.csv) HERE'
     else:
@@ -262,13 +265,19 @@ def getProbeGeometryCsv(probeType):
 
 ### read probe type from user populated text file in raw data dir
 def getProbeType(path):
+    print('path: {0}'.format(path))
     cwd = os.getcwd()      
     os.chdir(path)
     if not os.path.exists('probeType.txt'):
         os.chdir(callingDir)
-        with open('rawDataPaths.txt') as rawPaths:
-            correctedProbeTypePath = [rawPath for rawPath in rawPaths if path in rawPath]
-            os.chdir(correctedProbeTypePath)
+        with open('rawDataPaths.txt') as rawPathsFile:
+            rawPaths = rawPathsFile.read().splitlines()
+            correctedProbeTypePath = [rawPath for rawPath in rawPaths if os.path.basename(path) in rawPath]
+            if correctedProbeTypePath:
+                print('WARNING: probeType.txt not found in cwd\nChecking the raw data dir with the same recording ID corrected: {0}\n'.format(correctedProbeTypePath))
+                os.chdir(correctedProbeTypePath[0])
+            elif not correctedProbeTypePath:
+                sys.exit('ERROR: unable to find a probeType.txt giving the type of the probe used for this recording')
     with open('probeType.txt') as f:
         probeType = f.readline()
         probeType = probeType.strip()
@@ -292,13 +301,13 @@ def runMntSrt(rawMDApaths):
     os.chdir(callingDir)
     with open('recordingIDsToRun.txt') as recIDs, open('rawDataPaths.txt') as rawPaths:
         recIDs = recIDs.read().splitlines()
-        os.chdir(PATH_spikeSortedParent)
+        os.chdir(MNTSRT_PARAMS_DIR)
         print('running mountainSort commands from' + os.getcwd() + '\n' + 'running mountain sort now')
         print('reminder: are you passing the correct probe geom.csv file based on the probe type in probeType.txt in the raw data dir?')
         for recID in recIDs:
             for rawMDApath in rawMDApaths:
                 if recID in rawMDApath: 
-                    print('\nspike sorting: \n' + rawMDApath) 
+                    print('\nspike sorting: \n' + rawMDApath)
                     rawMDAdir = os.path.dirname(rawMDApath)
                     
                     # PROBE_GEOM_CSV_NAME = 'geom64F' # DO NOT ADD THE .csv file ext  # <- old version
@@ -369,8 +378,8 @@ elif SPIKESORTER == 'mountainSort':
     rawMDApaths = getRawMDApaths()
     print('\nraw MDA paths: \n')
     print('\n'.join(rawMDApaths))
-
     runMntSrt(rawMDApaths) # WIP: make param for mntSrt_run_options 
+    print('finished spikesorting')
 elif SPIKESORTER == 'both':
     #### mountainSort
     ### FILE TYPE CONVERSION: only needs to be run the first time
@@ -395,7 +404,7 @@ if RUN_PHY.lower() == 'yes':
     print('looping over all kilosort outputs in phy for manual stage:')
     usePhyForKilosortManualValidation()
 
-if VIEW_MTNSRT_RESULTS.lower() == 'no':
+if VIEW_MTNSRT_RESULTS.lower() == 'yes':
     viewMntSrt()
 
 
