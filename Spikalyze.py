@@ -5,6 +5,7 @@ import sys
 import os.path
 import glob
 import pdb
+import copy
 
 ### use this to get a traceback for warnings!
 #import warnings
@@ -543,6 +544,50 @@ class Spikalyze:
         plt.show()
 #            rowPosition += 1
         
+    def modulateFiringRate(self, PERCENT_MODULATION):
+        spikeRemovalProbability = np.divide(self.sine_vals - np.min(self.sine_vals), np.max(self.sine_vals)-np.min(self.sine_vals))
+        
+        spikes = copy.deepcopy(self.unitsXspikesLst) ### WARNING CHECK THAT THIS DOESN'T CHANGE THE ORIGINAL!!!!!!!!!!!!!!!!!!!!
+        
+        for unit in range(0,len(spikes)):
+            print('deleting spikes in unit: {0} to modulate (simulated) magnetoreception: '.format(unit))
+            for spikeTime in spikes[unit]:
+                
+                modulate = np.random.choice([True, False], p =[PERCENT_MODULATION, 1-PERCENT_MODULATION]) ### IS THIS THE RIGHT WAY TO IMPLEMENT THE MODULATION?
+                if modulate:
+                    sineTimeClosestToSpkTime = min(range((len(self.sine_timesInSecs))), key=lambda i: abs(self.sine_timesInSecs[i]-spikeTime)) ### UNVERIFIED: gets index of closest match
+                    dropSpike = np.random.choice([True, False], p=[spikeRemovalProbability[sineTimeClosestToSpkTime], 1-spikeRemovalProbability[sineTimeClosestToSpkTime]])
+                    if dropSpike:
+                        print('dropping spike {0} from unit: {1}'.format(spikeTime, unit))
+                        spikes[unit].remove(spikeTime)
+        self.unitsXspikesLst_modulated = spikes
+    
+    ### WIP:
+    def getConfidenceInterval(self, psd):
+        print('TO DO: get the confidence interval')
+        ### z score the PSD
+    
+    def getMinModForConfidence(self, MIN_PERCENT_MODULATION, STEP_SIZE):
+        print('WIP: getting the min level of modulation to see an effect')
+        
+        satisfied = False
+        percentModulated = MIN_PERCENT_MODULATION
+        while not satisfied:
+            self.modulateFiringRate(percentModulated)
+            
+            psd = [] ######################################################### HOW DO I WANT INTERACT WITH THE PSD FOR FIRING RATE?
+            
+            confidenceInterval = self.getConfidenceInterval(psd)
+            
+            value = [] ##################################################################### p value?
+            if value > confidenceInterval:
+                satisfied = True
+            elif value < confidenceInterval:
+                percentModulated += STEP_SIZE
+                
+    def plotSimulatedMagnetoreception():
+        print('TO DO: plotting commands for simulated data')
+                
 ################################################################## MAIN CODE EXECUTION BELOW ##################################################################
         
 ### TTL plotting parameters
@@ -576,8 +621,12 @@ UNITS_PLOTTED = [0, 0] # use [0, 0] to plot all of them
 
 ### plot PSTHs
 BIN_SIZE_SEC = 10/1000 ### 10 ms bin size
-data.plotPSTHs(BIN_SIZE_SEC)
+#data.plotPSTHs(BIN_SIZE_SEC)
 
+### plot simulated magnetoreception
+MIN_PERCENT_MODULATION = 0.01 # percentage of signal modulated 
+STEP_SIZE = 0.002
+data.getMinModForConfidence(MIN_PERCENT_MODULATION, STEP_SIZE)
 
 
 print('finished!')
