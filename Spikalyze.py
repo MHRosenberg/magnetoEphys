@@ -292,80 +292,14 @@ class Spikalyze:
 #            f.show()
 #            g.show()
 #            h.show()
-            
-    def alignSpikesToSine(self):
-        ### TO DO: make this robust to low TTL first without dropping data 
-        self.units_x_SpikeSineTimes = []
-        totalNumMatches = 0
-        unitNumMatches = 0            
-        sineInd = 0
-        ### IIa: for loop over all the units
-        for unit in range(0,len(self.unitsXspikesLst)):
-            print('aligning spikes to high TTLs for unit: ' + str(unit))
-            ttlSubtractedUnitSpikeTimes = []
-            ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
-            
-            for highTTL in range(0, (len(TTL_times)//2)-2, 2):
-                ### III: get earliest and latest time for this sine/TTL period
-                earliestTime = TTL_times[highTTL]
-                latestTime = TTL_times[highTTL+2] ## skip the low TTL; ################# WARNING: does this need to have something added to avoid double counting the boundaries?
-                ### IV: find all values in spikes in III's time window and append unit's sine aligned spike list
-                for spikeTime in self.unitsXspikesLst[unit]:
-                    if spikeTime > earliestTime and spikeTime < latestTime:
-                        ### V: subtract high TTL times from IV
-                        ttlSubtractedUnitSpikeTimes.append(spikeTime - earliestTime) 
-                        print('match added to sine aligned 2d list')
-                        print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
-                        totalNumMatches += 1
-                        unitNumMatches += 1
-                    sineInd += 1
-            ### VII: append unit spike list to unit list
-            self.units_x_SpikeSineTimes.append(ttlSubtractedUnitSpikeTimes)
-            ttlSubtractedUnitSpikeTimes = []
-            unitNumMatches = 0
-        self.numSinePeriods = sineInd
-        return self.units_x_SpikeSineTimes, self.numSinePeriods
 
-    def plotRasters(self, *args): 
-        print('plotting spike rasters:')
-        if 'sine' in args:              
-            print('plotting spikes aligned to TTL (sine) phase:')
-            self.units_x_SpikeSineTimes = self.alignSpikesToSine()            
-            plt.figure()
-            LINE_LENGTHS = 0.8
-            plt.eventplot(self.units_x_SpikeSineTimes, linelengths = LINE_LENGTHS) #, linelengths = lineLengths)
-            plt.show()
-            print('done')
-        elif not args:
-            print('no argument provided --> plotting generic rasters')
-
-        ### plot spikes over recording length (with TTL stimuli if present)
-        plt.figure()
-        numUnits = len(self.unitsXspikesLst)
-        
-        ####################### TO DO: auto generate appropriate line lengths and colorCodes for the given num of neurons
-        lineLengths = np.ones(numUnits)
-        colorCodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 0, 1]])
-#        plt.eventplot(self.unitsXspikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
-        plt.eventplot(self.unitsXspikesLst[:][:]) #, linelengths = lineLengths)
-        
-        try:       
-            Y_OFFSET_FOR_TTLs = 2
-            sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
-            TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
-            TTL_vals_offset = TTL_values - Y_OFFSET_FOR_TTLs
-            plt.plot(self.TTL_squ_timesInSecs, TTL_squ_vals_offset, 'o', color = 'b')
-            plt.plot(self.sine_timesInSecs, sine_vals_offset, 'o', color = 'g')
-            plt.plot(TTL_times, TTL_vals_offset, 'o', color = 'r')
-            print('stimuli plotted as negative y values')        
-        except:
-            print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
-        plt.show()
-        
-        ### TO DO: save plots to output dir
-
-    def plotSpectra(self, FIRST_SAMPLE, LAST_SAMPLE):
-        print('\nplotting spectra for units and stimulus')
+    def plotSpectra(self, FIRST_SAMPLE, LAST_SAMPLE, *args):
+        if 'mod' in args:
+            print('\nplotting spectra for MODULATED units and stimulus')
+            spikes = self.unitsXspikesLst_mod
+        elif not 'mod' in args:
+            print('\nplotting spectra for units and stimulus')
+            spikes = self.unitsXspikesLst
         
         totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
         if totalStimDurationSecs > 10: ## stimulus duration must be longer than 10 secs to plot it
@@ -373,7 +307,7 @@ class Spikalyze:
         else:
             plotSine = False
             FIRST_SAMPLE = 0
-            LAST_SAMPLE = np.max(np.max(self.unitsXspikesLst))
+            LAST_SAMPLE = np.max(np.max(spikes))
             totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
         
         ### neuron's bin'd sample rate
@@ -451,7 +385,7 @@ class Spikalyze:
         
         if UNITS_PLOTTED == [0, 0]:
             firstUnit = 0
-            lastUnit = len(self.unitsXspikesLst)-1 ### return to original after debugging
+            lastUnit = len(spikes)-1 ### return to original after debugging
         else:
             firstUnit = UNITS_PLOTTED[0]
             lastUnit = UNITS_PLOTTED[-1]
@@ -459,8 +393,8 @@ class Spikalyze:
             t = "unit: {0}".format(unit)
             print(t)
             
-#            unit_hist, binEdges = np.histogram(self.unitsXspikesLst[unit], bins, (FIRST_SAMPLE, LAST_SAMPLE))
-            unit_hist, binEdges = np.histogram(self.unitsXspikesLst[unit], bins)
+#            unit_hist, binEdges = np.histogram(spikes[unit], bins, (FIRST_SAMPLE, LAST_SAMPLE))
+            unit_hist, binEdges = np.histogram(spikes[unit], bins)
             
             ### Welch PSD            
             welchFreqs_neuron, Pxx_den = welch(unit_hist,
@@ -484,7 +418,7 @@ class Spikalyze:
 #                print('magnitude spectrum threw an error for unit {0};\n error: noverlap must be less than n'.format(unit))
             
             ### Spectrogram
-#                Pxx, freqs, bins, im = ax5.specgram(self.unitsXspikesLst[unit], Fs=self.sampleRate, noverlap=100)                
+#                Pxx, freqs, bins, im = ax5.specgram(spikes[unit], Fs=self.sampleRate, noverlap=100)                
 #                Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs=self.sampleRate, noverlap=100)
 #            Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs= binSampleRate) ### TO DO: FIX RUNTIME WARNING: DIVIDE BY ZERO
 
@@ -496,30 +430,41 @@ class Spikalyze:
         fig.savefig(fig_name)
         
         plt.show()
-               
-        ### TO DO: save plots to output dir
-    
-    def plotPSTHs(self, BIN_SIZE_SEC):
-        print("Plotting PSTHs")
         
-        ### check for the existence of self.units_x_SpikeSineTimes run alignSpikesToSine() if it doens't exist
-        try:
-            self.units_x_SpikeSineTimes
-        except AttributeError:
-            self.alignSpikesToSine()
+        ### TO DO: save plots to output dir
+        self.welchFreqs_neuron = welchFreqs_neuron
+        self.Pxx_den = Pxx_den
+        return welchFreqs_neuron, Pxx_den
+               
+    def plotPSTHs(self, BIN_SIZE_SEC, *args):
+        if 'mod' in args:
+            print('plotting modulated PSTH')
+            try: 
+                self.unitsXspikesLst_mod
+            except AttributeError:
+                self.alignSpikesToSine('mod') ### create aligned dataset if it doesn't exist yet
+            spikes = self.unitsXspikesLst_mod
+            numUnits = int(len(spikes)) 
+            self.PSTHs_mod = np.full((numUnits,int(numBins)), np.nan) 
+            PSTH = self.PSTHs_mod
+        elif not 'mod' in args:
+            print("Plotting PSTHs aligned to sine phase")
+            try:
+                self.unitsXspikeStimAligned
+            except AttributeError:
+                self.alignSpikesToSine() ### create aligned dataset if it doesn't exist yet
+            spikes = self.unitsXspikeStimAligned
+            ### pre allocate PSTH mat
+            numUnits = int(len(spikes)) 
+            self.PSTHs = np.full((numUnits,int(numBins)), np.nan) 
+            PSTH = self.PSTHs
         
         ### generate bins
-        latestSpikeTime = np.amax(np.amax(self.units_x_SpikeSineTimes))
+        latestSpikeTime = np.amax(np.amax(spikes))###
         numBins, remainderSecs = np.divmod(latestSpikeTime, BIN_SIZE_SEC)
-        
 #        finalTimePt = float(numBins) * float(BIN_SIZE_SEC) # old version
         finalTimePt = float(numBins+1) * float(BIN_SIZE_SEC) # this discards the the final remaining timepoints that don't fit into a bin
-        
         bins = np.linspace(0, finalTimePt, int(numBins), endpoint=True) ### size 34 or 35?
-        
-        ### pre allocate PSTH mat
-        numUnits = int(len(self.units_x_SpikeSineTimes))
-        self.PSTHs = np.full((numUnits,int(numBins)), np.nan) 
         
         ###### figure initialization
         ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
@@ -532,17 +477,112 @@ class Spikalyze:
         columnPosition = 0
         for unitInd in range(0, numUnits): 
             print('plotting PSTH for unit: {0} of {1} total'.format(unitInd,numUnits))
-            unitPSTH, binEdges = np.histogram(self.units_x_SpikeSineTimes[unitInd], bins)   #size 34?         
+            unitPSTH, binEdges = np.histogram(spikes[unitInd], bins)   #size 34?      ####    
             unitPSTH = unitPSTH / self.numSinePeriods
             ### plot the PSTHs for each unit
 #            plt.plot(binEdges,unitPSTH,label=str(unitInd))  # throws an error
             plt.plot(unitPSTH,label=str(unitInd))  # works but shows the bin number and not the bin values
-#            self.PSTHs[unitInd,:] = unitPSTH # TO DO: make this work and check for off by one errors in the binning process
+
+#            PSTH[unitInd,:] = unitPSTH # TO DO: make this work and check for off by one errors in the binning process ##### IMPORTANT AND MISSING (VARIABLE CURRENT UNSAVED)
+
         plt.legend()
         plt.xlabel('bin num (10 ms/bin')
         plt.ylabel('mean spikes per 10 ms bin')
         plt.show()
 #            rowPosition += 1
+        
+    def alignSpikesToSine(self,*args):
+        if 'mod' in args: # currently using the sine stim as the modulation sine as well so it'll be the same as the else condition but I want it to be easily dissociable in the future
+            spikesIn = self.unitsXspikesLst_mod
+            self.unitsXspikesWmod = []
+            spikesOut = self.unitsXspikesModAligned
+            self.numSinePeriods_mod = []
+            numPeriods = self.numSinePeriods_mod
+        else:
+            spikesIn = self.unitsXspikesLst
+            self.unitsXspikeStimAligned = []
+            spikesOut = self.unitsXspikeStimAligned
+            numPeriods = self.numSinePeriods
+        
+        ### TO DO: make this robust to low TTL first without dropping data 
+        totalNumMatches = 0
+        unitNumMatches = 0            
+        sineInd = 0
+        ### IIa: for loop over all the units
+        for unit in range(0,len(spikes)):
+            print('aligning spikes to high TTLs for unit: ' + str(unit))
+            ttlSubtractedUnitSpikeTimes = []
+            ### IIb: for loop over high TTLs Oo. skip every other starting with high TTL
+            
+            for highTTL in range(0, (len(TTL_times)//2)-2, 2):
+                ### III: get earliest and latest time for this sine/TTL period
+                earliestTime = TTL_times[highTTL]
+                latestTime = TTL_times[highTTL+2] ## skip the low TTL; ################# WARNING: does this need to have something added to avoid double counting the boundaries?
+                ### IV: find all values in spikes in III's time window and append unit's sine aligned spike list
+                for spikeTime in spikes[unit]:
+                    if spikeTime > earliestTime and spikeTime < latestTime:
+                        ### V: subtract high TTL times from IV
+                        ttlSubtractedUnitSpikeTimes.append(spikeTime - earliestTime) 
+                        print('match added to sine aligned 2d list')
+                        print('unit: ' + str(unit) + '; time win: ' + str(earliestTime) + ' - ' + str(latestTime) + '; spikeTime: ' + str(spikeTime) + '; total matches: ' + str(totalNumMatches) + '; unit matches: ' + str(unitNumMatches))
+                        totalNumMatches += 1
+                        unitNumMatches += 1
+                    sineInd += 1
+            ### VII: append unit spike list to unit list
+            spikesOut.append(ttlSubtractedUnitSpikeTimes)
+#            ttlSubtractedUnitSpikeTimes = [] #################################### CHECK BUT THIS CAN PROBABLY BE DELETED
+            unitNumMatches = 0
+        numPeriods = sineInd
+        return spikesOut, numPeriods
+
+    def plotRasters(self, *args): 
+        if args:
+            if 'sine' in args:              
+                print('plotting spikes aligned to TTL (sine) phase:')
+                try:
+                    self.unitsXspikeStimAligned
+                except:
+                    self.unitsXspikeStimAligned = self.alignSpikesToSine()
+                spikes = self.unitsXspikeStimAligned                             
+            elif 'mod' in args:
+                print('plotting modulated spikes aligned to modulation-sine phase')
+                try:
+                    self.unitsXspikesModAligned
+                except:
+                    self.unitsXspikesModAligned = self.alignSpikesToSine('mod')            
+                spikes = self.unitsXspikesModAligned 
+            plt.figure()
+            LINE_LENGTHS = 0.8
+            plt.eventplot(spikes, linelengths = LINE_LENGTHS) #, linelengths = lineLengths)
+            plt.show()
+            print('done')
+        elif not args:
+            print('no argument provided --> plotting generic rasters')
+
+        ### plot spikes over recording length (with TTL stimuli if present)
+        plt.figure()
+        numUnits = len(self.unitsXspikesLst)
+        
+        ####################### TO DO: auto generate appropriate line lengths and colorCodes for the given num of neurons
+        lineLengths = np.ones(numUnits)
+        colorCodes = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 0, 1]])
+#        plt.eventplot(self.unitsXspikesLst[0:8][:], color=colorCodes) #, linelengths = lineLengths)
+        plt.eventplot(self.unitsXspikesLst[:][:]) #, linelengths = lineLengths)
+        
+        try:       
+            Y_OFFSET_FOR_TTLs = 2
+            sine_vals_offset = self.sine_vals - Y_OFFSET_FOR_TTLs
+            TTL_squ_vals_offset = self.TTL_squ_vals - Y_OFFSET_FOR_TTLs
+            TTL_vals_offset = TTL_values - Y_OFFSET_FOR_TTLs
+            plt.plot(self.TTL_squ_timesInSecs, TTL_squ_vals_offset, 'o', color = 'b')
+            plt.plot(self.sine_timesInSecs, sine_vals_offset, 'o', color = 'g')
+            plt.plot(TTL_times, TTL_vals_offset, 'o', color = 'r')
+            print('stimuli plotted as negative y values')        
+        except:
+            print('WARNING: plotting TTL stimuli failed either because TTL were not present or due to an error')        
+        plt.show()
+        
+        ### TO DO: save plots to output dir
         
     def modulateFiringRate(self, PERCENT_MODULATION):
         spikeRemovalProbability = np.divide(self.sine_vals - np.min(self.sine_vals), np.max(self.sine_vals)-np.min(self.sine_vals))
@@ -560,7 +600,7 @@ class Spikalyze:
                     if dropSpike:
                         print('dropping spike {0} from unit: {1}'.format(spikeTime, unit))
                         spikes[unit].remove(spikeTime)
-        self.unitsXspikesLst_modulated = spikes
+        self.unitsXspikesLst_mod = spikes
     
     ### WIP:
     def getConfidenceInterval(self, psd):
@@ -570,12 +610,13 @@ class Spikalyze:
     def getMinModForConfidence(self, MIN_PERCENT_MODULATION, STEP_SIZE):
         print('WIP: getting the min level of modulation to see an effect')
         
-        satisfied = False
+        
+        satisfied = False ### loop w increasing modulation level until desired confidence interval reached
         percentModulated = MIN_PERCENT_MODULATION
         while not satisfied:
             self.modulateFiringRate(percentModulated)
             
-            psd = [] ######################################################### HOW DO I WANT INTERACT WITH THE PSD FOR FIRING RATE?
+            psd = [] ######################################################### HOW DO I WANT TO INTERACT WITH THE PSD FOR FIRING RATE?
             
             confidenceInterval = self.getConfidenceInterval(psd)
             
@@ -584,10 +625,7 @@ class Spikalyze:
                 satisfied = True
             elif value < confidenceInterval:
                 percentModulated += STEP_SIZE
-                
-    def plotSimulatedMagnetoreception():
-        print('TO DO: plotting commands for simulated data')
-                
+        
 ################################################################## MAIN CODE EXECUTION BELOW ##################################################################
         
 ### TTL plotting parameters
@@ -627,7 +665,9 @@ BIN_SIZE_SEC = 10/1000 ### 10 ms bin size
 MIN_PERCENT_MODULATION = 0.01 # percentage of signal modulated 
 STEP_SIZE = 0.002
 data.getMinModForConfidence(MIN_PERCENT_MODULATION, STEP_SIZE)
-
+data.plotRasters('mod')
+data.plotPSTHs('mod)
+data.plotSpectra
 
 print('finished!')
 
