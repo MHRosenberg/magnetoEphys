@@ -6,6 +6,7 @@ import os.path
 import glob
 import pdb
 import copy
+import time
 
 ### use this to get a traceback for warnings!
 #import warnings
@@ -55,8 +56,8 @@ class Spikalyze:
             # for clusters that were merged, compute the average waveform for every channel
             # by taking a weighted average across the clusters that were merged;    
             template_list = spike_templates[spike_clusters==cluster]
-            unique_template_list = np.unique(template_list)
-            preaverage = np.empty([len(unique_template_list),templates.shape[1],templates.shape[2]])
+            unique_template_list = np.unique(template_list) 
+            preaverage = np.empty([len(unique_template_list),templates.shape[1],templates.shape[2]]) ### 3 dimensional (cluster)?
             for ind in range(len(unique_template_list)):
                 preaverage[ind] = templates[unique_template_list[ind]]*len(template_list==unique_template_list[ind])/len(template_list)
             every_channel[cluster] = np.average(preaverage, axis=0)
@@ -86,9 +87,23 @@ class Spikalyze:
         self.sine_vals = []
         self.frequencies = []
         self.sampleRate = []
+        
+        ### declare psd vars
+        self.unitXfreqLst = []
+        self.allPSDsLst_mod = [] ### for (fictious) modulated data
 
         ### save as numpy
         np.save('spikeData', {'cellid':cellid,'masks':masks,'sp':sp})
+    
+    def plotAvgWaveform(self):
+        print()
+    
+    def plotMaxAmpChanRaw(self):
+        print()
+    
+    def plotAllWaveforms(self):  ### can I get this from kilosort or mountainSort directly?
+        print()
+    
         
     def recursiveSearch(self, exten): 
             pathList = []
@@ -212,7 +227,7 @@ class Spikalyze:
         self.TTL_squ_vals = np.full((self.numTimeStamps_TTL * NUM_PLATEU_PTS), np.nan)
         
 #        self.sine_timesInSecs = np.full((self.numTimeStamps_TTL-2)*NUM_SINE_VALS_PER_TTL//2, np.nan) # original 
-        self.sine_timesInSecs = np.full((self.numTimeStamps_TTL-2)*NUM_SINE_VALS_PER_TTL, np.nan) # DEBUGGING 8/8/18
+        self.sine_timesInSecs = np.full((self.numTimeStamps_TTL-2)*NUM_SINE_VALS_PER_TTL, np.nan) # DEBUGGING 8/8/18 TO DO: CHECK THIS!!!!!!!!!!!!!!!!!!!
          
         self.sine_vals = np.full(self.sine_timesInSecs.shape, np.nan)
         self.frequencies = np.full(self.numTimeStamps_TTL//2, np.nan) 
@@ -279,7 +294,6 @@ class Spikalyze:
             plt.xlabel('seconds')
             plt.plot(self.TTL_squ_timesInSecs, self.TTL_squ_vals, 'o', color = 'b')
             plt.plot(TTL_times, TTL_values, 'o', color = 'r')
-#            sine_timesSecs = self.sine_timesInSecs * self.sampleRate ### outdated cuz conversion to secs happens above now
             plt.plot(self.sine_timesInSecs, self.sine_vals, 'o', color = 'g')
             
             h = plt.figure()
@@ -292,149 +306,6 @@ class Spikalyze:
 #            f.show()
 #            g.show()
 #            h.show()
-
-    def plotSpectra(self, FIRST_SAMPLE, LAST_SAMPLE, *args):
-        if 'mod' in args:
-            print('\nplotting spectra for MODULATED units and stimulus')
-            spikes = self.unitsXspikesLst_mod
-        elif not 'mod' in args:
-            print('\nplotting spectra for units and stimulus')
-            spikes = self.unitsXspikesLst
-        
-        totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
-        if totalStimDurationSecs > 10: ## stimulus duration must be longer than 10 secs to plot it
-            plotSine = True
-        else:
-            plotSine = False
-            FIRST_SAMPLE = 0
-            LAST_SAMPLE = np.max(np.max(spikes))
-            totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
-        
-        ### neuron's bin'd sample rate
-        numBins, remainderSecs = np.divmod(totalStimDurationSecs, BIN_SIZE_SEC) ### totalStimDuration is from 0 to the last spike time if no TTLs are present
-        bins = np.linspace(FIRST_SAMPLE, FIRST_SAMPLE + round(float(numBins) * float(BIN_SIZE_SEC)), int(numBins), endpoint=True) 
-        binSampleRate = 1./np.mean(np.diff(bins))
-        
-        
-        print('binSampleRate = {0}'.format(binSampleRate))
-        
-        ### Welch PSD
-        ### sine stimulus
-        if plotSine == True:
-            ### sine stim's bin'd sample rate
-            try:
-                sineStimSampleRate = self.sine_vals.shape[0] / totalStimDurationSecs
-            except:
-                sys.exit('\n\nERROR: You probably need to uncomment data.reconstructSineFromTTLs(TTL_values, TTL_times) below to get the TTLs...\n\n')
-            print('sineStimSampleRate = {0}'.format(sineStimSampleRate))
-            welchFreqs_sine, Pxx_den = welch(self.sine_vals, nperseg = sineStimSampleRate * 100, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
-            
-            ### set up figure assuming the sine is present
-            NUM_ROWS = 3
-            NUM_COLUMNS = 1 
-            ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
-            ### plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes        
-            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
-            fig = plt.figure(figsize = FIG_SIZE)
-            rowPosition = 0
-            columnPosition = 0
-            
-            ### sine stimulus
-            ax1 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-            rowPosition += 1
-            ax1.set_title('sine stimulus Welch PSD')
-            ax1.set_xlabel('frequency [Hz]')
-            ax1.set_ylabel('PSD [V**2/Hz?]')
-            ax1.semilogy(welchFreqs_sine,Pxx_den, '-o')
-            ax1.set_xlim(0, MAX_FREQ_PLOTTED)
-        
-        elif plotSine == False:
-            print('sine stimulus sample rate calculation failed (this is expected if there are no TTLs for this recording)')
-            ### set up the figure if there's no sine stimulus
-            NUM_ROWS = 2
-            NUM_COLUMNS = 1 
-            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
-            fig = plt.figure(figsize = FIG_SIZE)
-            rowPosition = 0
-            columnPosition = 0
-
-        ### neurons
-        ax2 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-        rowPosition += 1
-        ax2.set_title('neurons\' Welch PSD (sci py ver)')
-        ax2.set_xlabel('frequency [Hz]')
-        ax2.set_ylabel('PSD [V**2/Hz?]')
-        ax2.set_xlim(0, MAX_FREQ_PLOTTED)
-        
-        ax3 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-        rowPosition += 1
-        ax3.set_title('neurons\' PSD (matplotlib ver)')
-        ax3.set_xlim(0, MAX_FREQ_PLOTTED)
-        
-#        ax4 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-#        rowPosition += 1
-#        ax4.set_title('neurons\' magnitude spectrum')
-#        ax4.set_xlim(0, MAX_FREQ_PLOTTED)
-        
-#        ax5 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
-#        rowPosition += 1
-#        ax5.set_title('neurons\' spectrogram')
-#        ax5.set_ylabel('Freq in Hz')
-#        ax5.set_xlabel('time in Secs')
-#        ax5.set_ylim(0,100)
-        
-        if UNITS_PLOTTED == [0, 0]:
-            firstUnit = 0
-            lastUnit = len(spikes)-1 ### return to original after debugging
-        else:
-            firstUnit = UNITS_PLOTTED[0]
-            lastUnit = UNITS_PLOTTED[-1]
-        for unit in range(firstUnit,lastUnit+1):
-            t = "unit: {0}".format(unit)
-            print(t)
-            
-#            unit_hist, binEdges = np.histogram(spikes[unit], bins, (FIRST_SAMPLE, LAST_SAMPLE))
-            unit_hist, binEdges = np.histogram(spikes[unit], bins)
-            
-            ### Welch PSD            
-            welchFreqs_neuron, Pxx_den = welch(unit_hist,
-               fs= binSampleRate, # sample rate
-               window='hanning',   # apply a Hanning window before taking the DFT
-               nperseg= self.sampleRate / 10,        # number of samples to include in the sliding window
-               detrend='constant')
-            ax2.semilogy(welchFreqs_neuron,Pxx_den, '-o', label = str(unit))
-#            ax2.plot(welchFreqs_neuron,Pxx_den, '-o')
-#            ax2.legend(['unit: {0}'.format(unit)])
-            
-            ### Welch PSD
-#            ax3.psd(unit_hist, binSampleRate, pad_to=1024, detrend = 'mean') 
-#            ax3.psd(unit_hist, Fs= binSampleRate, NFFT= self.sampleRate, marker='o')  ### <-- probably closer to working
-            
-            ### magnitude spectrum
-#            ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, scale = 'dB', marker = 'o')
-#            try:
-#                ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, marker = 'o')
-#            except:
-#                print('magnitude spectrum threw an error for unit {0};\n error: noverlap must be less than n'.format(unit))
-            
-            ### Spectrogram
-#                Pxx, freqs, bins, im = ax5.specgram(spikes[unit], Fs=self.sampleRate, noverlap=100)                
-#                Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs=self.sampleRate, noverlap=100)
-#            Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs= binSampleRate) ### TO DO: FIX RUNTIME WARNING: DIVIDE BY ZERO
-
-#        fig.colorbar(im).set_label('Intensity [dB]')
-#        fig.tight_layout()
-        fig.subplots_adjust(hspace = 1.0)
-        fig.set_size_inches(w=15,h=8)
-        fig_name = 'plot.png'
-        fig.savefig(fig_name)
-        
-        plt.show()
-        
-        ### TO DO: save plots to output dir
-        self.welchFreqs_neuron = welchFreqs_neuron
-        self.Pxx_den = Pxx_den
-        return welchFreqs_neuron, Pxx_den
                
     def plotPSTHs(self, BIN_SIZE_SEC, *args):
         if 'mod' in args:
@@ -584,28 +455,234 @@ class Spikalyze:
         
         ### TO DO: save plots to output dir
         
-    def modulateFiringRate(self, PERCENT_MODULATION):
-        spikeRemovalProbability = np.divide(self.sine_vals - np.min(self.sine_vals), np.max(self.sine_vals)-np.min(self.sine_vals))
+    def getSpectra(self, FIRST_SAMPLE, LAST_SAMPLE, *args):
+        if 'mod' in args:
+            print('\nplotting spectra for MODULATED units and stimulus')
+            spikes = self.unitsXspikesLst_mod
+        elif not 'mod' in args:
+            print('\nplotting spectra for units and stimulus')
+            spikes = self.unitsXspikesLst
         
+        totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
+        if totalStimDurationSecs > 10: ## stimulus duration must be longer than 10 secs to plot it
+            plotSine = True
+        else:
+            plotSine = False
+            FIRST_SAMPLE = 0
+            LAST_SAMPLE = np.max(np.max(spikes))
+            totalStimDurationSecs = LAST_SAMPLE - FIRST_SAMPLE ### in secs
+        
+        ### neuron's bin'd sample rate
+        numBins, remainderSecs = np.divmod(totalStimDurationSecs, BIN_SIZE_SEC) ### totalStimDuration is from 0 to the last spike time if no TTLs are present
+        bins = np.linspace(FIRST_SAMPLE, FIRST_SAMPLE + round(float(numBins) * float(BIN_SIZE_SEC)), int(numBins), endpoint=True) 
+        binSampleRate = 1./np.mean(np.diff(bins))
+        
+        
+        print('binSampleRate = {0}'.format(binSampleRate))
+        
+        ### Welch PSD
+        ### sine stimulus
+        if plotSine == True:
+            ### sine stim's bin'd sample rate
+            try:
+                sineStimSampleRate = self.sine_vals.shape[0] / totalStimDurationSecs
+            except:
+                sys.exit('\n\nERROR: You probably need to uncomment data.reconstructSineFromTTLs(TTL_values, TTL_times) below to get the TTLs...\n\n')
+            print('sineStimSampleRate = {0}'.format(sineStimSampleRate))
+            welchFreqs_sine, Pxx_den = welch(self.sine_vals, nperseg = sineStimSampleRate * 100, fs = sineStimSampleRate) ######## TO DO: Fix the sample rate }{ time units
+            
+            ### set up figure assuming the sine is present
+            NUM_ROWS = 3
+            NUM_COLUMNS = 1 
+            ### gridspec.GridSpec(NUM_ROWS,NUM_COLUMNS) # state-based versions for subplot
+            ### plt.subplot(611) ### doesn't require gridspec but is kinda clunky for dynamic changes        
+            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
+            fig = plt.figure(figsize = FIG_SIZE)
+            rowPosition = 0
+            columnPosition = 0
+            
+            ### sine stimulus
+            ax1 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+            rowPosition += 1
+            ax1.set_title('sine stimulus Welch PSD')
+            ax1.set_xlabel('frequency [Hz]')
+            ax1.set_ylabel('PSD [V**2/Hz?]')
+            ax1.semilogy(welchFreqs_sine,Pxx_den, '-o')
+            ax1.set_xlim(0, MAX_FREQ_PLOTTED)
+        
+        elif plotSine == False:
+            print('sine stimulus sample rate calculation failed (this is expected if there are no TTLs for this recording)')
+            ### set up the figure if there's no sine stimulus
+            NUM_ROWS = 2
+            NUM_COLUMNS = 1 
+            FIG_SIZE = (NUM_ROWS, NUM_COLUMNS)
+            fig = plt.figure(figsize = FIG_SIZE)
+            rowPosition = 0
+            columnPosition = 0
+
+        ### neurons
+        ax2 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+        rowPosition += 1
+        ax2.set_title('neurons\' Welch PSD (sci py ver)')
+        ax2.set_xlabel('frequency [Hz]')
+        ax2.set_ylabel('PSD [V**2/Hz?]')
+        ax2.set_xlim(0, MAX_FREQ_PLOTTED)
+        
+        ax3 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+        rowPosition += 1
+        ax3.set_title('neurons\' PSD (matplotlib ver)')
+        ax3.set_xlim(0, MAX_FREQ_PLOTTED)
+        
+#        ax4 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+#        rowPosition += 1
+#        ax4.set_title('neurons\' magnitude spectrum')
+#        ax4.set_xlim(0, MAX_FREQ_PLOTTED)
+        
+#        ax5 = plt.subplot2grid((NUM_ROWS, NUM_COLUMNS), (rowPosition,columnPosition))
+#        rowPosition += 1
+#        ax5.set_title('neurons\' spectrogram')
+#        ax5.set_ylabel('Freq in Hz')
+#        ax5.set_xlabel('time in Secs')
+#        ax5.set_ylim(0,100)
+        
+        if UNITS_PLOTTED == [0, 0]:
+            firstUnit = 0
+            lastUnit = len(spikes)-1 ### return to original after debugging
+        else:
+            firstUnit = UNITS_PLOTTED[0]
+            lastUnit = UNITS_PLOTTED[-1]
+        
+        unitXfreqLst = []
+        for unit in range(firstUnit,lastUnit+1):
+            t = "unit: {0}".format(unit)
+            print(t)
+            
+#            unit_hist, binEdges = np.histogram(spikes[unit], bins, (FIRST_SAMPLE, LAST_SAMPLE))
+            unit_hist, binEdges = np.histogram(spikes[unit], bins)
+            
+            ### Welch PSD            
+            welchFreqs_neuron, Pxx_den = welch(unit_hist,
+               fs= binSampleRate, # sample rate
+               window='hanning',   # apply a Hanning window before taking the DFT
+               nperseg= self.sampleRate / 10,        # number of samples to include in the sliding window
+               detrend='constant') ################################################################################## is detrending appropriate?
+            unitXfreqLst.append([welchFreqs_neuron, Pxx_den])
+            
+            ax2.semilogy(welchFreqs_neuron,Pxx_den, '-o', label = str(unit))
+#            ax2.plot(welchFreqs_neuron,Pxx_den, '-o')
+#            ax2.legend(['unit: {0}'.format(unit)])
+            
+            ### Welch PSD
+#            ax3.psd(unit_hist, binSampleRate, pad_to=1024, detrend = 'mean') 
+#            ax3.psd(unit_hist, Fs= binSampleRate, NFFT= self.sampleRate, marker='o')  ### <-- probably closer to working
+            
+            ### magnitude spectrum
+#            ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, scale = 'dB', marker = 'o')
+#            try:
+#                ax4.magnitude_spectrum(unit_hist, Fs = binSampleRate, marker = 'o')
+#            except:
+#                print('magnitude spectrum threw an error for unit {0};\n error: noverlap must be less than n'.format(unit))
+            
+            ### Spectrogram
+#                Pxx, freqs, bins, im = ax5.specgram(spikes[unit], Fs=self.sampleRate, noverlap=100)                
+#                Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs=self.sampleRate, noverlap=100)
+#            Pxx, freqs, bins, im = ax5.specgram(unit_hist, Fs= binSampleRate) ### TO DO: FIX RUNTIME WARNING: DIVIDE BY ZERO
+
+#        fig.colorbar(im).set_label('Intensity [dB]')
+#        fig.tight_layout()
+        fig.subplots_adjust(hspace = 1.0)
+        fig.set_size_inches(w=15,h=8)
+        fig_name = 'plot.png'
+        fig.savefig(fig_name)
+        
+        if 'plot' in args: plt.show()
+        
+        ### TO DO: save plots to output dir
+        if 'mod' in args:
+            self.allPSDsLst_mod = unitXfreqLst
+        else:
+            self.unitXfreqLst = unitXfreqLst
+        return unitXfreqLst
+    
+    def modulateFiringRate(self, PERCENT_MODULATION): ### MM: percent modulation is the max value of the sine wave
+        sineVals0to1 = np.divide(self.sine_vals - np.min(self.sine_vals), np.max(self.sine_vals)-np.min(self.sine_vals))
+        spikeRemovalProbability = sineVals0to1 * PERCENT_MODULATION
+        
+        
+        
+        searchTimesLst = [] ### [unit][spikeTime]
+        
+        tmpSineTimes = copy.deepcopy(self.sine_timesInSecs) ### get a fresh copy of the full length sine vector and then truncate below for faster searching
         spikes = copy.deepcopy(self.unitsXspikesLst) ### WARNING CHECK THAT THIS DOESN'T CHANGE THE ORIGINAL!!!!!!!!!!!!!!!!!!!!
-        
         for unit in range(0,len(spikes)):
             print('deleting spikes in unit: {0} to modulate (simulated) magnetoreception: '.format(unit))
+            
+            unitSearchTimes = []
+            startSineSearchAtInd = 0
             for spikeTime in spikes[unit]:
                 
-                modulate = np.random.choice([True, False], p =[PERCENT_MODULATION, 1-PERCENT_MODULATION]) ### IS THIS THE RIGHT WAY TO IMPLEMENT THE MODULATION?
-                if modulate:
-                    sineTimeClosestToSpkTime = min(range((len(self.sine_timesInSecs))), key=lambda i: abs(self.sine_timesInSecs[i]-spikeTime)) ### UNVERIFIED: gets index of closest match
-                    dropSpike = np.random.choice([True, False], p=[spikeRemovalProbability[sineTimeClosestToSpkTime], 1-spikeRemovalProbability[sineTimeClosestToSpkTime]])
+                ### original alternative method TO DO: check equivalence with the MM method
+#                modulate = np.random.choice([True, False], p =[PERCENT_MODULATION, 1-PERCENT_MODULATION]) ### RE DO: MAX PROBABILITY IS MODULATION!!!!!!!!!!!!
+#                if modulate:
+
+#                t = time.time() ### for timing
+#                sineIndexClosestToSpkTime = min(range((len(tmpSineTimes))), key=lambda i: abs(tmpSineTimes[i]-spikeTime)) ### broken bullshit... ugh wasted hella time cuz I trusted this...
+                for sineInd in range(startSineSearchAtInd, len(tmpSineTimes)-1): ### find the closest sine value
+                    timeDelta_this = np.abs(tmpSineTimes[sineInd] - spikeTime)
+                    timeDelta_next = np.abs(tmpSineTimes[sineInd+1] - spikeTime)
+                    if timeDelta_next >= timeDelta_this: 
+                        startSineSearchAtInd = sineInd
+                        sineIndexClosestToSpkTime = sineInd
+                        break
+#                searchTime = time.time() - t
+#                unitSearchTimes.append(searchTime)                            
+#                print('seached the sine times in: {0} secs'.format(searchTime))
+                
+                MAX_DELTA = 0.5
+                if timeDelta_this > MAX_DELTA: ### must be within 10 ms to be considered sufficiently close
+                    print('time delta between spike and nearest sine time: {0}\n'.format(timeDelta_this))
+                    print('\nWARNING: skipping spikeTime: {0}\nNo sineVal exists within {1} secs...\n'.format(spikeTime, MAX_DELTA))
+                else:
+#                    print('spike time: {3}; sine time selected: {0}; prior sine time: {1}; next sine time: {2}'.format(tmpSineTimes[sineIndexClosestToSpkTime],tmpSineTimes[sineIndexClosestToSpkTime-1],tmpSineTimes[sineIndexClosestToSpkTime+1], spikeTime ))
+                    dropSpike = np.random.choice([True, False], p=[spikeRemovalProbability[sineIndexClosestToSpkTime], 1-spikeRemovalProbability[sineIndexClosestToSpkTime]])
                     if dropSpike:
-                        print('dropping spike {0} from unit: {1}'.format(spikeTime, unit))
+                        print('\ndropping spike {0} from unit: {1}'.format(spikeTime, unit))
+                        print('Unit:{0}; Spike time: {1}; Time of closest sine: {2}; closest corresponding sine index to spike time: {3}\n'.format(unit, spikeTime, tmpSineTimes[sineIndexClosestToSpkTime], sineIndexClosestToSpkTime))
                         spikes[unit].remove(spikeTime)
+#            searchTimesLst.append(unitSearchTimes)
+
         self.unitsXspikesLst_mod = spikes
+        return spikes
     
-    ### WIP:
-    def getConfidenceInterval(self, psd):
-        print('TO DO: get the confidence interval')
-        ### z score the PSD
+    def getConfidenceInterval(self):
+        if self.allPSDsLst_mod == []:
+            sys.exit('freqLst is empty!!')
+        
+        ### calculate distibutions of powers for modulated data
+        nBINS = 1000 
+        MIN_PWR = 0
+        MAX_PWR = np.median(self.allPSDsLst_mod) ##################################### SHOULD I TRANSFORM THE Y AXIS TO LOG OR SOMETHING?
+        self.unitXallPowersHist = np.full((len(self.allPSDsLst_mod), nBINS),np.nan)
+        for unitIdx in range(0,len(self.allPSDsLst_mod)):
+            hist, bin_edges = np.histogram(self.allPSDsLst_mod[unitIdx][1], bins=nBINS, range=(MIN_PWR,MAX_PWR), density=False) ### TO DO: EXCLUDE Y VALUES OF FREQS TO CLOSE TO 0!!!!!!!!!!!!!!
+            self.unitXallPowersHist[unitIdx,:] = hist
+            ### sanity check plotting
+            plt.figure()
+            plt.plot(hist)
+
+        plt.figure()
+        for unitIdx in range(0,len(self.unitXallPowersHist)):
+            plt.plot(self.unitXallPowersHist[unitIdx])
+        plt.plot(np.mean(self.unitXallPowersHist,axis=0), 'r')
+#        plt.show()      
+                
+        ### TO DO: calculate stats
+#        if self.unitXfreqLst == []:
+#            discard = self.getSpectra(FIRST_TTL_USED,LAST_TTL_USED,'mod', 'plot')
+            
+        return self.unitXallPowersHist[unitIdx,:]
+        ### SEE PAGE 206 IN YEAR 2 NOTEBOOK FOR MM INSTRUCTIONS
+        
     
     def getMinModForConfidence(self, MIN_PERCENT_MODULATION, STEP_SIZE):
         print('WIP: getting the min level of modulation to see an effect')
@@ -614,25 +691,27 @@ class Spikalyze:
         satisfied = False ### loop w increasing modulation level until desired confidence interval reached
         percentModulated = MIN_PERCENT_MODULATION
         while not satisfied:
-            self.modulateFiringRate(percentModulated)
-            
-            psd = [] ######################################################### HOW DO I WANT TO INTERACT WITH THE PSD FOR FIRING RATE?
-            
-            confidenceInterval = self.getConfidenceInterval(psd)
-            
-            value = [] ##################################################################### p value?
+            print('modulating firing rate by: {0}'.format(percentModulated))
+            unitsXspikesLst_mod = self.modulateFiringRate(percentModulated) ### TO DO: make this save an intermediary results so that it doens't have to be rerun each time
+            print('getting PSD')
+            unitXfreqLst = self.getSpectra(FIRST_TTL_USED,LAST_TTL_USED,'mod', 'plot')
+            print('To do: getting confidence interval')
+            allPSDsLst_mod = self.getConfidenceInterval()
+            sys.exit('TO DO: check y histogram PDF')
+            value = [] ##################################################################### p value?????????????????????????????????
             if value > confidenceInterval:
                 satisfied = True
             elif value < confidenceInterval:
                 percentModulated += STEP_SIZE
         
 ################################################################## MAIN CODE EXECUTION BELOW ##################################################################
+plt.close('all')
         
 ### TTL plotting parameters
 NUM_PLATEU_PTS = 20 # number of points to add per high/low TTL pulse to recreate the square wave from transistion points
 MEAN_SINE_VAL = 0.5
 SINE_AMPLITUDE = 0.6
-NUM_SINE_VALS_PER_TTL = 1000
+NUM_SINE_VALS_PER_TTL = 100
 
 ####### main code execution (call desired )
 SPIKE_DIR = os.getcwd() ### directory of spike sorted data
@@ -640,8 +719,8 @@ data = Spikalyze(SPIKE_DIR) ### load sorted data
 
 TTL_times, TTL_values = data.loadTTLdata() # implicitly calls getRawDataDir()
 
-#data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
-data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
+data.reconstructSineFromTTLs(TTL_values, TTL_times, 'debug') # optinal debug flab at end plots the stimulus alone
+#data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO DO: remove this dependence
 
 ### plot rasters
 #data.plotRasters()
@@ -649,25 +728,26 @@ data.reconstructSineFromTTLs(TTL_values, TTL_times) # req'd for plot spectra TO 
 
 ### plot PSDs
 ### neural PSD parameters
-FIRST_SAMPLE = TTL_times[0] 
-LAST_SAMPLE = TTL_times[-2] 
+FIRST_TTL_USED = TTL_times[0] 
+LAST_TTL_USED = TTL_times[-2] 
 BIN_SIZE_SEC = 5/1000 ### 5 ms bin size
 MAX_FREQ_PLOTTED = 15
 UNITS_PLOTTED = [0, 0] # use [0, 0] to plot all of them
 
-#data.plotSpectra(FIRST_SAMPLE, LAST_SAMPLE) #uncomment to run
+#data.getSpectra(FIRST_SAMPLE, LAST_SAMPLE) #uncomment to run
 
 ### plot PSTHs
 BIN_SIZE_SEC = 10/1000 ### 10 ms bin size
 #data.plotPSTHs(BIN_SIZE_SEC)
 
 ### plot simulated magnetoreception
-MIN_PERCENT_MODULATION = 0.01 # percentage of signal modulated 
+MIN_PERCENT_MODULATION = 0.40 # percentage of signal modulated 
 STEP_SIZE = 0.002
 data.getMinModForConfidence(MIN_PERCENT_MODULATION, STEP_SIZE)
-data.plotRasters('mod')
-data.plotPSTHs('mod)
-data.plotSpectra
+#data.plotRasters('mod') ### (not so important to implement this)
+data.plotPSTHs('mod')
+data.getSpectra(FIRST_TTL_USED, LAST_TTL_USED, 'mod', 'plot')
+
 
 print('finished!')
 
